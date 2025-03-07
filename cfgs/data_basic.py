@@ -7,5 +7,6 @@ DATA_PATH_DICT = {
     'KittiDataset15': '/mnt/nas/algorithm/chenming.zhang/dataset/KITTI/stereo_2015',
     'DrivingDataset': '/mnt/nas/algorithm/chenming.zhang/dataset/DrivingStereo',
     'MiddleburyDataset': '/mnt/nas/algorithm/chenming.zhang/dataset/Middlebury',
-    'ETH3DDataset': '/mnt/nas/algorithm/chenming.zhang/dataset/ETH3D'
+    'ETH3DDataset': '/mnt/nas/algorithm/chenming.zhang/dataset/ETH3D',
+    'VirtualKitti2Dataset': './data/VirtualKitti2'
 }
