@@ -47,7 +47,6 @@ def parse_config():
         dataset_name = each.DATASET
         if dataset_name == 'KittiDataset':
             dataset_name = 'KittiDataset15' if 'kitti15' in each.DATA_SPLIT.EVALUATING else 'KittiDataset12'
-        each.DATA_PATH = DATA_PATH_DICT[dataset_name]
 
     args.run_mode = 'train'
     return args, cfgs

@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from stereo.modeling.common.basic_block_2d import BasicConv2d, BasicDeconv2d
@@ -16,7 +17,7 @@ class LightStereo(nn.Module):
         self.left_att = cfgs.LEFT_ATT
 
         # backbobe
-        self.backbone = Backbone(cfgs.get('BACKCONE', 'MobileNetv2'))
+        self.backbone = Backbone(cfgs.get('BACKCBONE', 'MobileNetv2'))
 
         # aggregation
         self.cost_agg = Aggregation(in_channels=48,
@@ -76,10 +77,22 @@ class LightStereo(nn.Module):
         mask = (disp_gt < self.max_disp) & (disp_gt > 0)  # [bz, 1, h, w]
 
         disp_pred = model_pred['disp_pred']
+        disp_pred = torch.clamp(disp_pred, min=1e-6, max=self.max_disp)
+        if torch.isnan(disp_pred).any() or torch.isinf(disp_pred).any():
+            print('disp_pred has nan or inf')
+            disp_pred = torch.nan_to_num(disp_pred, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
         loss = 1.0 * F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
 
         disp_4 = model_pred['disp_4']
+        disp_4 = torch.clamp(disp_4, min=1e-6, max=self.max_disp)
+        if torch.isnan(disp_4).any() or torch.isinf(disp_4).any():
+            print('disp_4 has nan or inf')
+            disp_4 = torch.nan_to_num(disp_4, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
         loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
+
+        if torch.isnan(loss).any() or torch.isinf(loss).any():
+            print('loss has nan or inf')
+            loss = torch.nan_to_num(loss, nan=0, posinf=100, neginf=0)
 
         loss_info = {'scalar/train/loss_disp': loss.item()}
 
