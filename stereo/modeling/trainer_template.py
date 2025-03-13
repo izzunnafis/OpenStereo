@@ -202,7 +202,10 @@ class TrainerTemplate:
                 loss, tb_info = loss_func(model_pred, data)
 
             # 不要在autocast下调用, calls backward() on scaled loss to create scaled gradients.
-            with torch.autograd.detect_anomaly():
+            # with torch.autograd.detect_anomaly():
+            if torch.isnan(loss):
+                print('loss has nan')
+            else:
                 self.scaler.scale(loss).backward()
             # 做梯度剪裁的时候需要先unscale, unscales the gradients of optimizer's assigned params in-place
             self.scaler.unscale_(self.optimizer)
@@ -238,7 +241,11 @@ class TrainerTemplate:
                 self.logger.info(message)
 
             if self.cfgs.TRAINER.TRAIN_VISUALIZATION:
-                tb_info['image/train/image'] = torch.cat([data['left'][0], data['right'][0]], dim=1)
+                std = torch.tensor([ 0.229, 0.224, 0.225 ]).reshape(3,1,1).to(data['left'].device)
+                mean = torch.tensor([ 0.485, 0.456, 0.406 ] ).reshape(3,1,1).to(data['left'].device)
+                left = data['left'][0]*std + mean
+                right = data['right'][0]*std + mean
+                tb_info['image/train/image'] = torch.cat([left, right], dim=1)
                 tb_info['image/train/disp'] = color_map_tensorboard(data['disp'][0], model_pred['disp_pred'].squeeze(1)[0])
 
             tb_info.update({'scalar/train/lr': lr})
