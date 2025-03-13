@@ -4,3 +4,4 @@
 data/**/**
 stereo/modeling/models/nmrf/ops/**
 output/**
+dump**
