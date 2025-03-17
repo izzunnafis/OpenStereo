@@ -17,17 +17,25 @@ class Aggregation(nn.Module):
     def __init__(self, input_channel=[80, 160, 320, 640], group_wise_split=[4,4,4,4], search_num=[9,9,25,25], corr_split_mode = [1,1,0,0], downsample_scale=[4, 8, 16, 32], max_disp=192):
         super(Aggregation, self).__init__()
 
+        self.attention_channels = [128, 128, 256, 256]
+
         self.dim = 16
         self.input_channel = input_channel
 
-        self.self_att_fn = nn.ModuleList([LocalFeatureTransformer(d_model=input_channel[0], nhead=8, layer_names=['self']*1, attention='linear'),
-                            LocalFeatureTransformer(d_model=input_channel[1], nhead=8, layer_names=['self']*1, attention='linear'),
-                            LocalFeatureTransformer(d_model=input_channel[2], nhead=8, layer_names=['self']*1, attention='linear'),
-                            LocalFeatureTransformer(d_model=input_channel[3], nhead=8, layer_names=['self']*1, attention='linear')])
-        self.cross_att_fn = nn.ModuleList([LocalFeatureTransformer(d_model=input_channel[0], nhead=8, layer_names=['cross']*1, attention='linear'),
-                            LocalFeatureTransformer(d_model=input_channel[1], nhead=8, layer_names=['cross']*1, attention='linear'),
-                            LocalFeatureTransformer(d_model=input_channel[2], nhead=8, layer_names=['cross']*1, attention='linear'),
-                            LocalFeatureTransformer(d_model=input_channel[3], nhead=8, layer_names=['cross']*1, attention='linear')])
+        self.self_conv_fn1 = nn.ModuleList([nn.Conv2d(input_channel[0], self.attention_channels[0], 3, stride=1, padding=1),
+                                          nn.Conv2d(input_channel[1], self.attention_channels[1], 3, stride=1, padding=1),
+                                          nn.Conv2d(input_channel[2], self.attention_channels[2], 3, stride=1, padding=1),
+                                          nn.Conv2d(input_channel[3], self.attention_channels[3], 3, stride=1, padding=1)])
+
+        self.cross_att_fn = nn.ModuleList([LocalFeatureTransformer(d_model=self.attention_channels[0], nhead=8, layer_names=['cross']*1, attention='linear'),
+                            LocalFeatureTransformer(d_model=self.attention_channels[1], nhead=8, layer_names=['cross']*1, attention='linear'),
+                            LocalFeatureTransformer(d_model=self.attention_channels[2], nhead=8, layer_names=['cross']*1, attention='linear'),
+                            LocalFeatureTransformer(d_model=self.attention_channels[3], nhead=8, layer_names=['cross']*1, attention='linear')])
+
+        self.self_conv_fn2 = nn.ModuleList([nn.Conv2d(self.attention_channels[0], self.attention_channels[0], 3, stride=1, padding=1),
+                                          nn.Conv2d(self.attention_channels[1], self.attention_channels[0], 3, stride=1, padding=1),
+                                          nn.Conv2d(self.attention_channels[2], self.attention_channels[0], 3, stride=1, padding=1),
+                                          nn.Conv2d(self.attention_channels[3], self.attention_channels[0], 3, stride=1, padding=1)])
 
 
         self.max_disp = max_disp
@@ -41,27 +49,24 @@ class Aggregation(nn.Module):
                             LoFTREncoderLayer(d_model=self.search_num[2]*self.group_wise_split[2], nhead=4),
                             LoFTREncoderLayer(d_model=self.search_num[3]*self.group_wise_split[3], nhead=4)])
         
-        self.conv_4 = nn.Conv2d(1, self.dim, 1)
-        self.conv_4_out = nn.Conv2d(self.dim, 1, 1)
-        self.upconv_4 = nn.ConvTranspose2d(self.dim, self.dim, kernel_size=4, stride=2, padding=1, bias=False)
+        self.nn_linears = nn.ModuleList([nn.Linear(self.search_num[0]*self.group_wise_split[0], 17),
+                                        nn.Linear(self.search_num[1]*self.group_wise_split[1], 17),
+                                        nn.Linear(self.search_num[2]*self.group_wise_split[2], 17),
+                                        nn.Linear(self.search_num[3]*self.group_wise_split[3], 17)])
         
-        self.conv_3 = nn.Conv2d(1, self.dim, 1)
-        self.conv_34_out = nn.Conv2d(2*self.dim, out_channels=1, kernel_size=1)
-        self.upconv_3 = nn.ConvTranspose2d(2*self.dim, self.dim, kernel_size=4, stride=2, padding=1, bias=False)
+        self.upconv_4 = nn.ConvTranspose2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=2, padding=1, bias=False)
+        
+        self.conv_3 = nn.Conv2d(2*self.attention_channels[0], self.attention_channels[0], 1)
+        self.upconv_3 = nn.ConvTranspose2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=2, padding=1, bias=False)
 
-        self.conv_2 = nn.Conv2d(1, self.dim, 1)
-        self.conv_23_out = nn.Conv2d(2*self.dim, out_channels=1, kernel_size=1)
-        self.upconv_2 = nn.ConvTranspose2d(2*self.dim, self.dim, kernel_size=4, stride=2, padding=1, bias=False)
+        self.conv_2 = nn.Conv2d(2*self.attention_channels[0], self.attention_channels[0], 1)
+        self.upconv_2 = nn.ConvTranspose2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=2, padding=1, bias=False)
 
-        self.conv_1 = nn.Conv2d(1, self.dim, 1)
-        self.conv_12_out = nn.Conv2d(2*self.dim, out_channels=1, kernel_size=1)
-        self.upconv_1 = nn.ConvTranspose2d(2*self.dim, self.dim, kernel_size=4, stride=4, padding=0, bias=False)
+        self.conv_1 = nn.Conv2d(2*self.attention_channels[0], self.attention_channels[0], 1)
+        self.upconv_1 = nn.ConvTranspose2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=4, padding=0, bias=False)
 
-        self.final_disp = nn.Conv2d(self.dim, 1, 1)
-
-        self.activation = nn.ReLU()
-
-        self._init_weights()
+        self.disp_lists = [128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125, 0.00390625, 0.001953125, 0.0009765625]
+        # self._init_weights()
 
     def _init_weights(self):
             """Custom weight initialization to ensure positivity."""
@@ -71,14 +76,57 @@ class Aggregation(nn.Module):
                     if m.bias is not None:
                         torch.nn.init.constant_(m.bias, 0.00)  # Ensure positive bias
 
+    def process_stage(self, features_left, features_right, stage_idx, N, H, W,  features_left_up=None, features_right_up=None, upconv=None, conv=None):
+        """Process a single stage of the disparity estimation pipeline"""
+        if upconv is not None and conv is not None and features_left_up is not None and features_right_up is not None:
+            # Upsample and concatenate features from previous stage
+            left_up = upconv(features_left_up)
+            right_up = upconv(features_right_up)
+            
+            left = torch.cat([left_up, features_left], dim=1)
+            right = torch.cat([right_up, features_right], dim=1)
+            
+            left = conv(left)
+            right = conv(right)
+        else:
+            left = features_left
+            right = features_right
+
+        # Compute correlation and cost volume
+        corr_method = AGCL(left, right, self.corr_split_mode[stage_idx])
+        corr_res, _ = corr_method(self.group_wise_split[stage_idx], self.search_num[stage_idx])
+        
+        # Reshape correlation volume
+        corr_seq = torch.reshape(
+            torch.permute(corr_res, (0,2,3,1)),
+            (N, H*W, self.search_num[stage_idx]*self.group_wise_split[stage_idx]),
+        )
+        
+        # Process through attention and linear layers
+        cost_seq = self.att_encs[stage_idx](corr_seq, corr_seq, source_mask=None)
+        cost_seq = self.nn_linears[stage_idx](cost_seq)
+
+        # Generate attention weights and compute disparity
+        attn_weights = F.sigmoid(cost_seq, dim=-1)
+        attn_weights = torch.reshape(
+            torch.permute(attn_weights, (0,2,3,1)),
+            (N, H*W, 17),
+        )
+
+        disp = torch.sum(attn_weights * torch.tensor(self.disp_lists), axis=-1)
+        disp = disp.reshape(N, 1, H, W)
+        
+        return disp
+
     def forward(self, features_left, features_right):
-        out_corr_stages = []
         out_disp = []
-        out = []
         for i in range(4):
             N, C, H, W = features_left[i].size()
 
-            position_encoding = PositionEncodingSine(d_model=self.input_channel[i], max_shape=(features_left[i].size(2), features_left[i].size(3)))
+            features_left[i] = self.self_conv_fn[i](features_left[i])
+            features_right[i] = self.self_conv_fn[i](features_right[i])
+
+            position_encoding = PositionEncodingSine(d_model=self.attention_channels[i], max_shape=(features_left[i].size(2), features_left[i].size(3)))
             x_tmp_left = position_encoding(features_left[i])
             x_tmp_right = position_encoding(features_right[i])
 
@@ -92,7 +140,6 @@ class Aggregation(nn.Module):
                 (N, H*W, C),
             )
 
-            features_left[i], features_right[i] = self.self_att_fn[i](features_left[i], features_right[i])
             features_left[i], features_right[i] = self.cross_att_fn[i](features_left[i], features_right[i])
 
             features_left[i], features_right[i] = [
@@ -100,66 +147,44 @@ class Aggregation(nn.Module):
                 for x in [features_left[i], features_right[i]]
             ]
 
-            corr_method = AGCL(features_left[i], features_right[i], self.corr_split_mode[i])
+            features_left[i] = self.self_conv_fn2[i](features_left[i])
+            features_right[i] = self.self_conv_fn2[i](features_right[i])    
 
-            corr_res, disp_lists = corr_method(self.group_wise_split[i], self.search_num[i])# corr (N, search_num*split_num, H, W)
-            out_corr_stages.append(corr_res)
-            disp_lists = disp_lists.cuda()
 
-            corr_seq = torch.reshape(
-                torch.permute(corr_res, (0,2,3,1)), #(N, H, W, search_num*split_num)
-                (N, H*W, self.search_num[i]*self.group_wise_split[i]),
-            )
+        # Stage 4
+        N, C, H, W = features_left[3].size()
+        disp_4 = self.process_stage(features_left[3], features_right[3], 3, N, H, W)
+        out_disp.append(disp_4)
 
-            cost_seq = self.att_encs[i](corr_seq, corr_seq, source_mask=None)
+        # Stage 3
+        H, W = H*2, W*2
+        disp_3 = self.process_stage(features_left[2], features_right[2], 2, N, H, W,
+                                    features_left[3], features_right[3],
+                                    self.upconv_4, self.conv_3)
+        out_disp.append(disp_3)
 
-            attn_weights = F.softmax(cost_seq, dim=-1)
-            disp_lists = disp_lists*self.downsample_scale[i]
-            disp = torch.sum(attn_weights * disp_lists, axis=-1)
-            disp = disp.reshape(N, 1, H, W)
+        # Stage 2
+        H, W = H*2, W*2
+        disp_2 = self.process_stage(features_left[1], features_right[1], 1, N, H, W,
+                                    features_left[2], features_right[2],
+                                    self.upconv_3, self.conv_2)
+        out_disp.append(disp_2)
 
-            out_disp.append(disp)
+        # Stage 1
+        H, W = H*2, W*2
+        disp_1 = self.process_stage(features_left[0], features_right[0], 0, N, H, W,
+                                    features_left[1], features_right[1],
+                                    self.upconv_2, self.conv_1)
+        out_disp.append(disp_1)
 
-        disp_4 = self.conv_4(out_disp[3]) #N, 16, H/32, W/32
-        disp_4 = self.activation(disp_4)
-        disp_4_out = self.conv_4_out(disp_4) #N, 1, H/32, W/32
-        disp_4_out = self.activation(disp_4_out)
-        out.append(disp_4_out)
+        # Final stage
+        H, W = H*4, W*4
+        vol_0_left = self.upconv_1(features_left[0])
+        vol_0_right = self.upconv_1(features_right[0])
+        disp_0 = self.process_stage(vol_0_left, vol_0_right, 0, N, H, W)
+        out_disp.append(disp_0)
 
-        disp_4_up = self.upconv_4(disp_4) #N, 16, H/16, W/16
-        disp_3 = self.conv_3(out_disp[2]) #N, 16, H/16, W/16
-
-        disp_34 = torch.cat([disp_3, disp_4_up], dim=1) #N, 32, H/16, W/16
-        disp_34 = self.activation(disp_34)
-        disp_34_out = self.conv_34_out(disp_34) #N, 1, H/16, W/16
-        disp_34_out = self.activation(disp_34_out)
-        out.append(disp_34_out)
-
-        disp_34_up = self.upconv_3(disp_34) #N, 16, H/8, W/8
-        disp_2 = self.conv_2(out_disp[1]) #N, 16, H/8, W/8
-        
-        disp_234 = torch.cat([disp_2, disp_34_up], dim=1) #N, 32, H/8, W/8
-        disp_234 = self.activation(disp_234)
-        disp_234_out = self.conv_23_out(disp_234) #N, 1, H/8, W/8
-        disp_234_out = self.activation(disp_234_out)
-        out.append(disp_234_out)
-
-        disp_234_up = self.upconv_2(disp_234) #N, 16, H/4, W/4
-        disp_1 = self.conv_1(out_disp[0]) #N, 16, H/4, W/4
-
-        disp_1234 = torch.cat([disp_1, disp_234_up], dim=1) #N, 32, H/4, W/4
-        disp_1234 = self.activation(disp_1234)
-        disp_1234_out = self.conv_12_out(disp_1234) #N, 1, H/4, W/4
-        disp_1234_out = self.activation(disp_1234_out)
-        out.append(disp_1234_out)
-
-        disp_1234_up = self.upconv_1(disp_1234) #N, 16, H, W
-        final_disp = self.final_disp(disp_1234_up) #N, 1, H, W
-        final_disp = self.activation(final_disp)
-        out.append(final_disp)
-
-        return out
-    
+        return out_disp
 
 if __name__ == "__main__":
     import torch.optim as optim
