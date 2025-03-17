@@ -49,10 +49,10 @@ class Aggregation(nn.Module):
                             LoFTREncoderLayer(d_model=self.search_num[2]*self.group_wise_split[2], nhead=4),
                             LoFTREncoderLayer(d_model=self.search_num[3]*self.group_wise_split[3], nhead=4)])
         
-        self.nn_linears = nn.ModuleList([nn.Linear(self.search_num[0]*self.group_wise_split[0], 17),
-                                        nn.Linear(self.search_num[1]*self.group_wise_split[1], 17),
-                                        nn.Linear(self.search_num[2]*self.group_wise_split[2], 17),
-                                        nn.Linear(self.search_num[3]*self.group_wise_split[3], 17)])
+        self.nn_linears = nn.ModuleList([nn.Linear(self.search_num[0]*self.group_wise_split[0], 18),
+                                        nn.Linear(self.search_num[1]*self.group_wise_split[1], 18),
+                                        nn.Linear(self.search_num[2]*self.group_wise_split[2], 18),
+                                        nn.Linear(self.search_num[3]*self.group_wise_split[3], 18)])
         
         self.upconv_4 = nn.ConvTranspose2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=2, padding=1, bias=False)
         
@@ -109,7 +109,7 @@ class Aggregation(nn.Module):
         attn_weights = F.sigmoid(cost_seq, dim=-1)
         attn_weights = torch.reshape(
             torch.permute(attn_weights, (0,2,3,1)),
-            (N, H*W, 17),
+            (N, H*W, 18),
         )
         
         return attn_weights

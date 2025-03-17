@@ -39,13 +39,20 @@ class EfficientStereo(nn.Module):
         for i in range(len(attn_weight)):
             disp_val = torch.sum(attn_weight[i] * self.disp_lists, axis=-1)
             out.append(disp_val.reshape(N, 1, H//tmp_scale[i], W//tmp_scale[i]))
+            attn_weight[i] = attn_weight[i].reshape(N, 1, H//tmp_scale[i], W//tmp_scale[i])
 
         result = {'disp_pred' : out[-1],
                   'disp_per4' : out[-2],
                   'disp_per8' : out[-3],
                   'disp_per16' : out[-4],
                   'disp_per32' : out[-5]}
-        return result
+        
+        result_weight = {'attn_weight_pred': attn_weight[-1],
+                         'attn_weight_per4': attn_weight[-2],
+                         'attn_weight_per8': attn_weight[-3],
+                         'attn_weight_per16': attn_weight[-4],
+                         'attn_weight_per32': attn_weight[-5]}
+        return result, result_weight
 
 
     def get_loss(self, model_pred, input_data):
