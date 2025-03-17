@@ -65,7 +65,6 @@ class Aggregation(nn.Module):
         self.conv_1 = nn.Conv2d(2*self.attention_channels[0], self.attention_channels[0], 1)
         self.upconv_1 = nn.ConvTranspose2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=4, padding=0, bias=False)
 
-        self.disp_lists = [128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125, 0.00390625, 0.001953125, 0.0009765625]
         # self._init_weights()
 
     def _init_weights(self):
@@ -112,14 +111,11 @@ class Aggregation(nn.Module):
             torch.permute(attn_weights, (0,2,3,1)),
             (N, H*W, 17),
         )
-
-        disp = torch.sum(attn_weights * torch.tensor(self.disp_lists), axis=-1)
-        disp = disp.reshape(N, 1, H, W)
         
-        return disp
+        return attn_weights
 
     def forward(self, features_left, features_right):
-        out_disp = []
+        attn_weight = []
         for i in range(4):
             N, C, H, W = features_left[i].size()
 
@@ -153,38 +149,38 @@ class Aggregation(nn.Module):
 
         # Stage 4
         N, C, H, W = features_left[3].size()
-        disp_4 = self.process_stage(features_left[3], features_right[3], 3, N, H, W)
-        out_disp.append(disp_4)
+        attn_weight4 = self.process_stage(features_left[3], features_right[3], 3, N, H, W)
+        attn_weight.append(attn_weight4)
 
         # Stage 3
         H, W = H*2, W*2
-        disp_3 = self.process_stage(features_left[2], features_right[2], 2, N, H, W,
+        attn_weight3 = self.process_stage(features_left[2], features_right[2], 2, N, H, W,
                                     features_left[3], features_right[3],
                                     self.upconv_4, self.conv_3)
-        out_disp.append(disp_3)
+        attn_weight.append(attn_weight3)
 
         # Stage 2
         H, W = H*2, W*2
-        disp_2 = self.process_stage(features_left[1], features_right[1], 1, N, H, W,
+        attn_weight2 = self.process_stage(features_left[1], features_right[1], 1, N, H, W,
                                     features_left[2], features_right[2],
                                     self.upconv_3, self.conv_2)
-        out_disp.append(disp_2)
+        attn_weight.append(attn_weight2)
 
         # Stage 1
         H, W = H*2, W*2
-        disp_1 = self.process_stage(features_left[0], features_right[0], 0, N, H, W,
+        attn_weight1 = self.process_stage(features_left[0], features_right[0], 0, N, H, W,
                                     features_left[1], features_right[1],
                                     self.upconv_2, self.conv_1)
-        out_disp.append(disp_1)
+        attn_weight.append(attn_weight1)
 
         # Final stage
         H, W = H*4, W*4
         vol_0_left = self.upconv_1(features_left[0])
         vol_0_right = self.upconv_1(features_right[0])
-        disp_0 = self.process_stage(vol_0_left, vol_0_right, 0, N, H, W)
-        out_disp.append(disp_0)
+        attn_weight_final = self.process_stage(vol_0_left, vol_0_right, 0, N, H, W)
+        attn_weight.append(attn_weight_final)
 
-        return out_disp
+        return attn_weight
 
 if __name__ == "__main__":
     import torch.optim as optim

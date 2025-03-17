@@ -22,6 +22,7 @@ class EfficientStereo(nn.Module):
         # aggregation
         self.cost_agg = Aggregation()
 
+        self.disp_lists = torch.tensor([128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125, 0.00390625, 0.001953125, 0.0009765625])
 
     def forward(self, data):
         image1 = data['left']
@@ -30,7 +31,14 @@ class EfficientStereo(nn.Module):
         features_left = self.backbone(image1)
         features_right = self.backbone(image2)
 
-        out = self.cost_agg(features_left, features_right)
+        attn_weight = self.cost_agg(features_left, features_right)
+
+        out = []
+        tmp_scale = [1, 4, 8, 16, 32]
+        N, _, H, W = image1.size()
+        for i in range(len(attn_weight)):
+            disp_val = torch.sum(attn_weight[i] * self.disp_lists, axis=-1)
+            out.append(disp_val.reshape(N, 1, H//tmp_scale[i], W//tmp_scale[i]))
 
         result = {'disp_pred' : out[-1],
                   'disp_per4' : out[-2],
