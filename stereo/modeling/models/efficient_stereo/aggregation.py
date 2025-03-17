@@ -106,21 +106,18 @@ class Aggregation(nn.Module):
         cost_seq = self.nn_linears[stage_idx](cost_seq)
 
         # Generate attention weights and compute disparity
-        attn_weights = F.sigmoid(cost_seq, dim=-1)
-        attn_weights = torch.reshape(
-            torch.permute(attn_weights, (0,2,3,1)),
-            (N, H*W, 18),
-        )
+        attn_weights = F.sigmoid(cost_seq)
         
-        return attn_weights
+        return attn_weights, left, right
 
     def forward(self, features_left, features_right):
         attn_weight = []
         for i in range(4):
-            N, C, H, W = features_left[i].size()
+            N, _, H, W = features_left[i].size()
+            C = self.attention_channels[i]
 
-            features_left[i] = self.self_conv_fn[i](features_left[i])
-            features_right[i] = self.self_conv_fn[i](features_right[i])
+            features_left[i] = self.self_conv_fn1[i](features_left[i])
+            features_right[i] = self.self_conv_fn1[i](features_right[i])
 
             position_encoding = PositionEncodingSine(d_model=self.attention_channels[i], max_shape=(features_left[i].size(2), features_left[i].size(3)))
             x_tmp_left = position_encoding(features_left[i])
@@ -149,35 +146,35 @@ class Aggregation(nn.Module):
 
         # Stage 4
         N, C, H, W = features_left[3].size()
-        attn_weight4 = self.process_stage(features_left[3], features_right[3], 3, N, H, W)
+        attn_weight4, left, right = self.process_stage(features_left[3], features_right[3], 3, N, H, W)
         attn_weight.append(attn_weight4)
 
         # Stage 3
         H, W = H*2, W*2
-        attn_weight3 = self.process_stage(features_left[2], features_right[2], 2, N, H, W,
-                                    features_left[3], features_right[3],
+        attn_weight3, left, right = self.process_stage(features_left[2], features_right[2], 2, N, H, W,
+                                    left, right,
                                     self.upconv_4, self.conv_3)
         attn_weight.append(attn_weight3)
 
         # Stage 2
         H, W = H*2, W*2
-        attn_weight2 = self.process_stage(features_left[1], features_right[1], 1, N, H, W,
-                                    features_left[2], features_right[2],
+        attn_weight2, left, right = self.process_stage(features_left[1], features_right[1], 1, N, H, W,
+                                    left, right,
                                     self.upconv_3, self.conv_2)
         attn_weight.append(attn_weight2)
 
         # Stage 1
         H, W = H*2, W*2
-        attn_weight1 = self.process_stage(features_left[0], features_right[0], 0, N, H, W,
-                                    features_left[1], features_right[1],
+        attn_weight1, left, right = self.process_stage(features_left[0], features_right[0], 0, N, H, W,
+                                    left, right,
                                     self.upconv_2, self.conv_1)
         attn_weight.append(attn_weight1)
 
         # Final stage
         H, W = H*4, W*4
-        vol_0_left = self.upconv_1(features_left[0])
-        vol_0_right = self.upconv_1(features_right[0])
-        attn_weight_final = self.process_stage(vol_0_left, vol_0_right, 0, N, H, W)
+        vol_0_left = self.upconv_1(left)
+        vol_0_right = self.upconv_1(right)
+        attn_weight_final, _, _ = self.process_stage(vol_0_left, vol_0_right, 0, N, H, W)
         attn_weight.append(attn_weight_final)
 
         return attn_weight
