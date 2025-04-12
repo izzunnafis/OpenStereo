@@ -73,18 +73,26 @@ if __name__ == "__main__":
     model3 = Backbone('MobileNetv2').cuda()
     dummy_input = torch.randn(1, 3, 1024, 1024).cuda()  # Example input tensor
 
+    resnet34_times = []
+    mobilenetv4_times = []
+    mobilenetv2_times = []
+
     for i in range(100):
         start_time = time.time()
         features3 = model(dummy_input)
         torch.cuda.synchronize()  # Ensure all CUDA operations are complete
-        print(f"ResNet34 Inference Time: {time.time() - start_time:.6f} seconds")
+        resnet34_times.append(time.time() - start_time)
 
         start_time = time.time()
         features2 = model2(dummy_input)
         torch.cuda.synchronize()  # Ensure all CUDA operations are complete
-        print(f"MobileNetv4 Inference Time: {time.time() - start_time:.6f} seconds")
+        mobilenetv4_times.append(time.time() - start_time)
 
         start_time = time.time()
         features = model3(dummy_input)
         torch.cuda.synchronize()  # Ensure all CUDA operations are complete
-        print(f"MobileNetv2 Inference Time: {time.time() - start_time:.6f} seconds")
+        mobilenetv2_times.append(time.time() - start_time)
+
+    print(f"Average ResNet34 Inference Time: {sum(resnet34_times) / len(resnet34_times):.6f} seconds")
+    print(f"Average MobileNetv4 Inference Time: {sum(mobilenetv4_times) / len(mobilenetv4_times):.6f} seconds")
+    print(f"Average MobileNetv2 Inference Time: {sum(mobilenetv2_times) / len(mobilenetv2_times):.6f} seconds")

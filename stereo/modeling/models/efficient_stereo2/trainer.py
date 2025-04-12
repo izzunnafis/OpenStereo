@@ -1,10 +1,10 @@
 # @Time    : 2024/2/9 11:39
 # @Author  : zhangchenming
 from stereo.modeling.trainer_template import TrainerTemplate
-from .efficient_stereo import EfficientStereo
+from .efficient_stereo import EfficientStereo2
 
 __all__ = {
-    'EfficientStereo': EfficientStereo,
+    'EfficientStereo2': EfficientStereo2,
 }
 
 
