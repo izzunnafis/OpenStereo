@@ -52,19 +52,19 @@ class Aggregation(nn.Module):
 
         self.cross_att_fn = nn.ModuleList()
         for i in range(self.input_channel.__len__()):
-            self.cross_att_fn.append(LocalFeatureTransformer(self.input_channel[i], nhead=8, layer_names=['cross_single']*1, attention='linear'))
+            self.cross_att_fn.append(LocalFeatureTransformer(self.input_channel[i], nhead=8, layer_names=['cross']*1, attention='linear'))
 
-        self.conv0_init = MobileV2Residual(self.input_channel[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        self.conv0_init = MobileV2Residual(self.group_wise_split_num[0]*self.search_num[0], self.attention_channels[0], stride=1, expanse_ratio=4)
         conv0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
                  for i in range(3)]
         self.conv0 = nn.Sequential(*conv0)
 
-        self.conv1_init = MobileV2Residual(self.input_channel[1], self.attention_channels[1], stride=1, expanse_ratio=4)
+        self.conv1_init = MobileV2Residual(self.group_wise_split_num[1]*self.search_num[1], self.attention_channels[1], stride=1, expanse_ratio=4)
         conv1 = [MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
                     for i in range(3)]
         self.conv1 = nn.Sequential(*conv1)
 
-        self.conv2_init = MobileV2Residual(self.input_channel[2], self.attention_channels[2], stride=1, expanse_ratio=4)
+        self.conv2_init = MobileV2Residual(self.group_wise_split_num[2]*self.search_num[2], self.attention_channels[2], stride=1, expanse_ratio=4)
         conv2 = [MobileV2Residual(self.attention_channels[2], self.attention_channels[2], stride=1, expanse_ratio=4)
                     for i in range(3)]
         self.conv2 = nn.Sequential(*conv2)
@@ -118,14 +118,15 @@ class Aggregation(nn.Module):
             (N, H*W, C)
         )
 
-        cost_res, _ = self.cross_att_fn[stage_idx](feat_left, feat_right)
-        cost_res = torch.permute(torch.reshape(cost_res, (N, H, W, C)), (0, 3, 1, 2))
+        cross_left, cross_right = self.cross_att_fn[stage_idx](feat_left, feat_right)
+        cross_left = torch.permute(torch.reshape(cross_left, (N, H, W, C)), (0, 3, 1, 2))
+        cross_right = torch.permute(torch.reshape(cross_right, (N, H, W, C)), (0, 3, 1, 2))
 
         # Compute correlation and cost volume
-        # corr_method = AGCL(features_left, features_right, self.corr_split_mode[stage_idx])
-        # corr_res, _ = corr_method(self.group_wise_split_num[stage_idx], self.search_num[stage_idx])
+        corr_method = AGCL(cross_left, cross_right, self.corr_split_mode[stage_idx])
+        corr_res, _ = corr_method(self.group_wise_split_num[stage_idx], self.search_num[stage_idx])
 
-        return cost_res
+        return corr_res
 
     def forward(self, features_left, features_right):
         for i in range(features_left.__len__()):
