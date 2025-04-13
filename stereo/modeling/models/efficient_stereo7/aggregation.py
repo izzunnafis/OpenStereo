@@ -34,7 +34,7 @@ class FPNLayer(nn.Module):
 
 
 class Aggregation(nn.Module):
-    def __init__(self, input_channel=[24, 32, 96], group_wise_split_num=[4,4,4], search_num=[9,25,25], corr_split_mode = [1,0,0], downsample_scale=[4, 8, 16], max_disp=192):
+    def __init__(self, input_channel=[24, 32, 96], group_wise_split_num=[4,4,4], search_num=[9,9,25], corr_split_mode = [1,1,0], downsample_scale=[4, 8, 16], max_disp=192):
         super(Aggregation, self).__init__()
 
         self.attention_channels = [48, 64, 96]

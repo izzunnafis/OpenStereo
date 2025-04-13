@@ -6,31 +6,23 @@ from stereo.modeling.cost_volume.cost_volume import correlation_volume
 from stereo.modeling.disp_pred.disp_regression import disparity_regression
 from stereo.modeling.disp_refinement.disp_refinement import context_upsample
 
-from stereo.modeling.models.efficient_stereo4.backbone import Backbone
+from stereo.modeling.models.efficient_stereo5.backbone import Backbone
 
 # from .backbone import Backbone
 from .aggregation import Aggregation, FPNLayer
-from .transformer import LocalFeatureTransformer, PositionEncodingSine
 
 
-class EfficientStereo4(nn.Module):
+class EfficientStereo5(nn.Module):
     def __init__(self, cfgs):
         super().__init__()
         self.max_disp = cfgs.MAX_DISP
         self.left_att = cfgs.LEFT_ATT
 
         # backbobe
-        self.backbone = Backbone(backbone="MobileNetv2")
+        self.backbone = Backbone(backbone="MobileNetv4")
 
         # aggregation
         self.cost_agg = Aggregation(input_channel=self.backbone.out_channel)
-
-        # cross refination
-        self.cross_att_ref = LocalFeatureTransformer(
-            self.backbone.out_channel[0],
-            nhead=4,
-            layer_names=['cross_single']*1, attention="linear"
-        )
 
         # disp refine
         self.refine_1 = nn.Sequential(
@@ -61,25 +53,7 @@ class EfficientStereo4(nn.Module):
         prob_vol = F.softmax(encoded_vol, dim=1)
         init_disp = disparity_regression(prob_vol, self.max_disp // 4)  # [bz, 1, H/4, W/4]
 
-        # Cross attention
-        N, C, H, W = features_left[0].size()
-        pos_enc = PositionEncodingSine(C, max_shape=(H, W))
-        encoded_left = pos_enc(features_left[0])
-        encoded_right = pos_enc(features_right[0])
-
-        feat_left = torch.reshape(
-            torch.permute(encoded_left, (0, 2, 3, 1)),
-            (N, H*W, C)
-        )
-        feat_right = torch.reshape(
-            torch.permute(encoded_right, (0, 2, 3, 1)),
-            (N, H*W, C)
-        )
-
-        cross_left, _ = self.cross_att_ref(feat_left, feat_right)
-        cross_left = torch.permute(torch.reshape(cross_left, (N, H, W, C)), (0, 3, 1, 2))
-
-        xspx = self.refine_1(cross_left)
+        xspx = self.refine_1(features_left[0])
         xspx = self.refine_2(xspx, self.stem_2(image1))
         xspx = self.refine_3(xspx)
         spx_pred = F.softmax(xspx, 1)  # [bz, 9, H, W]

@@ -17,6 +17,10 @@ from .models.efficient_stereo.trainer import Trainer as EfficientStereoTrainer
 from .models.efficient_stereo2.trainer import Trainer as EfficientStereo2Trainer
 from .models.efficient_stereo3.trainer import Trainer as EfficientStereo3Trainer
 from .models.efficient_stereo4.trainer import Trainer as EfficientStereo4Trainer
+from .models.efficient_stereo5.trainer import Trainer as EfficientStereo5Trainer
+from .models.efficient_stereo6.trainer import Trainer as EfficientStereo6Trainer
+from .models.efficient_stereo7.trainer import Trainer as EfficientStereo7Trainer
+from .models.efficient_stereo8.trainer import Trainer as EfficientStereo8Trainer
 
 # from .models.iinet.trainer import Trainer as IINetTrainer
 
@@ -45,6 +49,10 @@ __all__ = {
     'EfficientStereo2' : EfficientStereo2Trainer,
     "EfficientStereo3" : EfficientStereo3Trainer,
     "EfficientStereo4" : EfficientStereo4Trainer,
+    "EfficientStereo5" : EfficientStereo5Trainer,
+    "EfficientStereo6" : EfficientStereo6Trainer,
+    "EfficientStereo7" : EfficientStereo7Trainer,
+    "EfficientStereo8" : EfficientStereo8Trainer,
 }
 
 
