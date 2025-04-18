@@ -6,7 +6,7 @@ DATA_CONFIG:
                 EVALUATING: ./data/SceneFlow/sceneflow_finalpass_test.txt,
                 TESTING: ./data/SceneFlow/sceneflow_finalpass_test.txt
             }
-            DATA_PATH: /yourpath/SceneFlow
+            DATA_PATH: ./data/SceneFlow
             RETURN_RIGHT_DISP: false
 
     DATA_TRANSFORM:
@@ -35,12 +35,12 @@ OPTIMIZATION:
     FREEZE_BN: false
     SYNC_BN: true
     AMP: true
-    BATCH_SIZE_PER_GPU: 24
-    NUM_EPOCHS: 90
+    BATCH_SIZE_PER_GPU: 2
+    NUM_EPOCHS: 50
 
     OPTIMIZER:
         NAME: AdamW
-        LR: &lr 0.0024
+        LR: &lr 0.0002
         WEIGHT_DECAY: 1.0e-05
         EPS: 1.0e-08
 
@@ -55,7 +55,7 @@ OPTIMIZATION:
         CLIP_VALUE: 0.1
 
 EVALUATOR:
-    BATCH_SIZE_PER_GPU: 12
+    BATCH_SIZE_PER_GPU: 1
     MAX_DISP: 192
     METRIC:
         - d1_all
@@ -65,7 +65,7 @@ EVALUATOR:
         - thres_3
 
 TRAINER:
-    EVAL_INTERVAL: 1
+    EVAL_INTERVAL: 2
     CKPT_SAVE_INTERVAL: 1
     MAX_CKPT_SAVE_NUM: 30
     LOGGER_ITER_INTERVAL: 10
