@@ -24,6 +24,12 @@ def parse_config():
     parser.add_argument('--savename', type=str, default=None)
 
     args = parser.parse_args()
+    args.cfg_file = "cfgs/efficientstereo/efficientstereo2_kitti.yaml"
+    folder = "/home/rispro-sils/ADAS_Kedaireka/Dataset/Manually_gathered_17_07_24/data_img"
+    args.left_img_path = os.path.join(folder, "20241210-182042-852_frame.png")
+    args.right_img_path = os.path.join(folder, "20241210-182042-924_frame2.png")
+    args.pretrained_model = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/EfficientStereo2/efficientstereo2_kitti/default/ckpt/checkpoint_epoch_49.pth"
+    args.savename = "output.png"
     yaml_config = common_utils.config_loader(args.cfg_file)
     cfgs = EasyDict(yaml_config)
 
