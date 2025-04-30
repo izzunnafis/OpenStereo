@@ -25,6 +25,18 @@ def window_partition(x, window_size):
     return windows
 
 
+def channel_partition(x):
+    """
+    Args:
+        x: (B, C, H, W)
+    Returns:
+
+    """
+    B, C, H, W = x.shape
+    windows = x.permute(0,2,3,1).reshape(B*H*W, C, 1)
+    return windows
+
+
 def window_reverse(windows, window_size, H, W):
     """
     Args:
@@ -39,6 +51,11 @@ def window_reverse(windows, window_size, H, W):
     x = windows.reshape(B, H // window_size, W // window_size, window_size, window_size, -1)
     x = x.permute(0, 5, 1, 3, 2, 4).reshape(B,windows.shape[2], H, W)
     return x
+
+def channel_reverse(windows, B, H, W, C):
+    windows = windows.reshape(B, H, W, C)
+    windows = windows.permute(0,3,1,2) #
+    return windows
 
 
 
@@ -290,22 +307,99 @@ class VisionFoundationLayer(nn.Module):
         stage_output  = x
 
         return stage_output
+    
+class VisionFoundationLayerDisp(nn.Module):
+    """
+    VisionFoundation layer"
+    """
+
+    def __init__(self,
+                 window_size,
+                 dim,
+                 num_heads,
+                 vision_layer_type="mamba",
+                 qkv_bias=True,
+                 qk_scale=None,
+                 drop=0.,
+                 attn_drop=0.,
+                 norm_layer=nn.LayerNorm,
+                 
+    ):
+        """
+        Args:
+            dim: feature size dimension.
+            depth: number of layers in each stage.
+            window_size: window size in each stage.
+            conv: bool argument for conv stage flag.
+            downsample: bool argument for down-sampling.
+            mlp_ratio: MLP ratio.
+            num_heads: number of heads in each stage.
+            qkv_bias: bool argument for query, key, value learnable bias.
+            qk_scale: bool argument to scaling query, key.
+            drop: dropout rate.
+            attn_drop: attention dropout rate.
+            drop_path: drop path rate.
+            norm_layer: normalization layer.
+            layer_scale: layer scaling coefficient.
+            layer_scale_conv: conv layer scaling coefficient.
+            transformer_blocks: list of transformer blocks.
+        """
+
+        super().__init__()
+        self.norm1 = norm_layer(dim)
+        if vision_layer_type == "mamba":
+            self.main_block = MambaVisionMixer(
+                d_model=dim,
+                d_state=8,
+                d_conv=3,
+                expand=1,
+            )
+        elif vision_layer_type == "attention":
+            self.main_block = AttentionMixer(
+                dim=dim,
+                num_heads=num_heads,
+                qkv_bias=qkv_bias,
+                qk_norm=qk_scale,
+                attn_drop=attn_drop,
+                proj_drop=drop,
+                norm_layer=norm_layer,
+            )
+        else:
+            raise NotImplementedError(f"Unsupported vision layer type: {vision_layer_type}")
+
+        self.window_size = window_size
+
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        x = channel_partition(x)
+
+        x_norm = self.norm1(x)
+        x = x + self.main_block(x_norm)
+
+        #Reverse partition
+        x = channel_reverse(x, B, H, W, C)
+        
+        stage_output  = x
+
+        return stage_output
+
 
 if __name__ == "__main__":
     # Example usage
-    x = torch.randn(1, 64, 224, 56)
+    dim = 64
+    x = torch.randn(1, dim, 224, 56).to("cuda")
 
     window_size = 8
-    dim = 64
     num_heads = 8
-    vision_layer_type = "mamba"
+    vision_layer_type = "attention"
     batch_size = 2
     height = 16
     width = 16
-    layer = VisionFoundationLayer(window_size=window_size,
-                                   dim=dim,
-                                num_heads=num_heads,
-                                vision_layer_type=vision_layer_type)
+    layer = VisionFoundationLayerDisp(window_size=window_size,
+                                   dim=1,
+                                num_heads=1,
+                                vision_layer_type=vision_layer_type).to("cuda")
     # Measure inference time for 100 iterations
     total_time = 0
     iterations = 100
@@ -317,3 +411,9 @@ if __name__ == "__main__":
 
     print(output.shape)  # Should be (1, 64, 224, 224)
     print(f"Average inference time over {iterations} iterations: {total_time / iterations:.6f} seconds")
+
+    # Print memory usage
+    memory_allocated = torch.cuda.memory_allocated() / (1024 ** 2)  # Convert to MB
+    memory_reserved = torch.cuda.memory_reserved() / (1024 ** 2)  # Convert to MB
+    print(f"Memory allocated: {memory_allocated:.2f} MB")
+    print(f"Memory reserved: {memory_reserved:.2f} MB")

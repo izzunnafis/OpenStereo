@@ -12,6 +12,7 @@ from stereo.utils import common_utils
 from stereo.modeling import build_trainer
 from stereo.utils.disp_color import disp_to_color
 from stereo.datasets.dataset_template import build_transform_by_cfg
+import time
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
@@ -85,7 +86,22 @@ def main():
         sample[k] = v.to(local_rank) if torch.is_tensor(v) else v
 
     with torch.cuda.amp.autocast(enabled=cfgs.OPTIMIZATION.AMP):
+        # Warm-up
         model_pred = model(sample)
+
+        # Measure inference time for 100 iterations
+        start_time = time.time()
+        for _ in range(100):
+            model_pred = model(sample)
+        end_time = time.time()
+
+        # Calculate average inference time
+        avg_inference_time = (end_time - start_time) / 100
+
+        # Log model name and image size
+        logger.info(f"Model Name: {cfgs.MODEL.NAME}")
+        logger.info(f"Image Size: {left_img.shape[1]}x{left_img.shape[0]}")
+        logger.info(f"Average Inference Time: {avg_inference_time:.6f} seconds")
 
     disp_pred = model_pred['disp_pred'].squeeze().cpu().numpy()
     img_color = disp_to_color(disp_pred, max_disp=192)

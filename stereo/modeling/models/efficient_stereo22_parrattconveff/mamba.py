@@ -388,12 +388,12 @@ if __name__ == "__main__":
     window_size = 8
     dim = 64
     num_heads = 8
-    vision_layer_type = "attention"
+    vision_layer_type = "mamba"
     batch_size = 2
     height = 16
     width = 16
     layer = VisionFoundationLayerDisp(window_size=window_size,
-                                   dim=1,
+                                   dim=2,
                                 num_heads=1,
                                 vision_layer_type=vision_layer_type)
     # Measure inference time for 100 iterations

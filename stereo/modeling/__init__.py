@@ -32,6 +32,9 @@ from .models.efficient_stereo16_better_disp.trainer import Trainer as EfficientS
 from .models.efficient_stereo17_att.trainer import Trainer as EfficientStereo17Trainer
 from .models.efficient_stereo18_attdisp.trainer import Trainer as EfficientStereo18Trainer
 from .models.efficient_stereo19_attdispcomb.trainer import Trainer as EfficientStereo19Trainer
+from .models.efficient_stereo20_parrattconv.trainer import Trainer as EfficientStereo20Trainer
+from .models.efficient_stereo21_parrattconvall.trainer import Trainer as EfficientStereo21Trainer
+from .models.efficient_stereo22_parrattconveff.trainer import Trainer as EfficientStereo22Trainer
 
 
 # from .models.iinet.trainer import Trainer as IINetTrainer
@@ -76,6 +79,9 @@ __all__ = {
     'EfficientStereo17' : EfficientStereo17Trainer,
     'EfficientStereo18' : EfficientStereo18Trainer,
     'EfficientStereo19' : EfficientStereo19Trainer,
+    'EfficientStereo20' : EfficientStereo20Trainer,
+    'EfficientStereo21' : EfficientStereo21Trainer,
+    'EfficientStereo22' : EfficientStereo22Trainer,
 }
 
 
