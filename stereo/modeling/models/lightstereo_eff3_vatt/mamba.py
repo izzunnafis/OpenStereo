@@ -7,6 +7,7 @@ from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 from einops import rearrange, repeat
 import time
 
+import numbers
 
 
 def window_partition(x, window_size):
@@ -200,7 +201,7 @@ class AttentionMixer(nn.Module):
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         self.scale = self.head_dim ** -0.5
-        self.fused_attn = True
+        self.fused_attn = False
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
@@ -223,7 +224,8 @@ class AttentionMixer(nn.Module):
         else:
             q = q * self.scale
             attn = q @ k.transpose(-2, -1)
-            attn = attn.softmax(dim=-1)
+            # attn = attn.softmax(dim=-1)
+            attn = F.elu(attn, alpha=1.0)
             attn = self.attn_drop(attn)
             x = attn @ v
 
@@ -518,29 +520,187 @@ class VisionFoundationLayerCross(nn.Module):
         return stage_output
 
 
+
+# =====================================================================================
+def to_3d(x):
+    return rearrange(x, 'b c h w -> b (h w) c')
+
+
+def to_4d(x, h, w):
+    return rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
+
+
+class BiasFree_LayerNorm(nn.Module):
+    def __init__(self, normalized_shape):
+        super(BiasFree_LayerNorm, self).__init__()
+        if isinstance(normalized_shape, numbers.Integral):
+            normalized_shape = (normalized_shape,)
+        normalized_shape = torch.Size(normalized_shape)
+
+        assert len(normalized_shape) == 1
+
+        self.weight = nn.Parameter(torch.ones(normalized_shape))
+        self.normalized_shape = normalized_shape
+
+    def forward(self, x):
+        sigma = x.var(-1, keepdim=True, unbiased=False)
+        return x / torch.sqrt(sigma + 1e-5) * self.weight
+
+
+class WithBias_LayerNorm(nn.Module):
+    def __init__(self, normalized_shape):
+        super(WithBias_LayerNorm, self).__init__()
+        if isinstance(normalized_shape, numbers.Integral):
+            normalized_shape = (normalized_shape,)
+        normalized_shape = torch.Size(normalized_shape)
+
+        assert len(normalized_shape) == 1
+
+        self.weight = nn.Parameter(torch.ones(normalized_shape))
+        self.bias = nn.Parameter(torch.zeros(normalized_shape))
+        self.normalized_shape = normalized_shape
+
+    def forward(self, x):
+        mu = x.mean(-1, keepdim=True)
+        sigma = x.var(-1, keepdim=True, unbiased=False)
+        return (x - mu) / torch.sqrt(sigma + 1e-5) * self.weight + self.bias
+
+
+class LayerNorm(nn.Module):
+    def __init__(self, dim, LayerNorm_type):
+        super(LayerNorm, self).__init__()
+        if LayerNorm_type == 'BiasFree':
+            self.body = BiasFree_LayerNorm(dim)
+        else:
+            self.body = WithBias_LayerNorm(dim)
+
+    def forward(self, x):
+        h, w = x.shape[-2:]
+        return to_4d(self.body(to_3d(x)), h, w)
+
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, ffn_expansion_factor, bias):
+        super(FeedForward, self).__init__()
+
+        hidden_features = int(dim * ffn_expansion_factor)
+
+        self.project_in = nn.Conv2d(dim, hidden_features * 2, kernel_size=1, bias=bias)
+
+        self.dwconv = nn.Conv2d(hidden_features * 2, hidden_features * 2, kernel_size=3, stride=1, padding=1,
+                                groups=hidden_features * 2, bias=bias)
+
+        self.project_out = nn.Conv2d(hidden_features, dim, kernel_size=1, bias=bias)
+
+    def forward(self, x):
+        x = self.project_in(x)
+        x1, x2 = self.dwconv(x).chunk(2, dim=1)
+        x = F.gelu(x1) * x2
+        x = self.project_out(x)
+        return x
+
+
+class Hadamard(nn.Module):
+    def __init__(self, dim, num_heads, bias):
+        super(Hadamard, self).__init__()
+        order = 3
+        self.order = order
+        # self.qkv = nn.Conv2d(dim, dim * 3, kernel_size=1, bias=bias)
+        self.dims = [dim // 2 ** i for i in range(order)]
+        self.qkv = nn.Conv2d(dim, self.dims[0]+sum(self.dims), kernel_size=1, bias=bias)
+        self.qk = nn.Conv2d(sum(self.dims), 2 * sum(self.dims), kernel_size=1, bias=bias)
+        self.temperature = nn.Parameter(torch.ones(1, 1, 1, 1))
+
+        # self.qkv_dwconv = nn.Conv2d(dim * 3, dim * 3, kernel_size=3, stride=1, padding=1, groups=dim, bias=bias)
+        self.alpha = 1.0
+        # self.one = torch.ones(1, 1, 1, 1)
+        self.mulconv = nn.ModuleList(
+            [nn.Conv2d(self.dims[i], self.dims[i + 1], kernel_size=2*i+3, padding=i+1) for i in range(order - 1)]
+        )
+        self.project_out = nn.Conv2d(sum(self.dims), dim, kernel_size=1, bias=bias)
+
+    def forward(self, v):
+        v = self.qkv(v)
+        v, q = torch.split(v, (self.dims[0], sum(self.dims)), dim=1)
+        q = self.qk(q) * self.temperature
+        q, k = q.chunk(2, dim=1)
+        q = torch.nn.functional.normalize(q, dim=1)
+        k = torch.nn.functional.normalize(k, dim=1)
+        q = F.elu(q * k, alpha=self.alpha)  #Attention
+        q = torch.split(q, self.dims, dim=1)
+        v = q[0] * v + v
+        k = v   # x1=v
+        for i in range(self.order-1):
+            k = self.mulconv[i](k) * q[i+1] #x1 = self.mulconv[i](x1) * qk_list[i+1]
+            v = torch.cat((v,k),dim=1)
+
+        v = self.project_out(v)
+        return v
+
+class TransformerBlock(nn.Module):
+    def __init__(self, dim, num_heads, ffn_expansion_factor, bias, LayerNorm_type):
+        super(TransformerBlock, self).__init__()
+
+        self.norm1 = LayerNorm(dim, LayerNorm_type)
+        self.attn = Hadamard(dim, num_heads, bias)
+        self.norm2 = LayerNorm(dim, LayerNorm_type)
+        self.ffn = FeedForward(dim, ffn_expansion_factor, bias)
+
+    def forward(self, x):
+        x = x + self.attn(self.norm1(x))
+        x = x + self.ffn(self.norm2(x))
+
+        return x
+
+
+# ====================================================================================
+
+
 if __name__ == "__main__":
     # Example usage
-    x = torch.randn(1, 64, 224, 56)
+    x = torch.randn(1, 128, 224, 56).cuda()
 
     window_size = 8
-    dim = 64
+    dim = 128
     num_heads = 8
-    vision_layer_type = "mamba"
+    vision_layer_type = "attention"
     batch_size = 2
     height = 16
     width = 16
-    layer = VisionFoundationLayerDisp(window_size=window_size,
-                                   dim=2,
-                                num_heads=1,
-                                vision_layer_type=vision_layer_type)
-    # Measure inference time for 100 iterations
-    total_time = 0
-    iterations = 100
+
+    # Hadamard Transformer
+    hadamard_layer = TransformerBlock(dim=dim, num_heads=num_heads, ffn_expansion_factor=2.0, bias=True, LayerNorm_type="WithBias").cuda()
+    # Vanilla Transformer
+    vanilla_layer = VisionFoundationLayer(window_size=window_size,
+                                              dim=dim,
+                                              num_heads=num_heads,
+                                              vision_layer_type=vision_layer_type).cuda()
+
+    # Measure inference time for Hadamard Transformer
+    total_time_hadamard = 0
+    iterations = 500
     for _ in range(iterations):
         start_time = time.time()
-        output = layer(x)
+        output_hadamard = hadamard_layer(x)
         end_time = time.time()
-        total_time += (end_time - start_time)
+        total_time_hadamard += (end_time - start_time)
 
-    print(output.shape)  # Should be (1, 64, 224, 224)
-    print(f"Average inference time over {iterations} iterations: {total_time / iterations:.6f} seconds")
+    # Measure inference time for Vanilla Transformer
+    total_time_vanilla = 0
+    for _ in range(iterations):
+        start_time = time.time()
+        output_vanilla = vanilla_layer(x)
+        end_time = time.time()
+        total_time_vanilla += (end_time - start_time)
+
+    total_time_hadamard = 0
+    for _ in range(iterations):
+        start_time = time.time()
+        output_hadamard = hadamard_layer(x)
+        end_time = time.time()
+        total_time_hadamard += (end_time - start_time)
+
+    print(f"Hadamard Transformer output shape: {output_hadamard.shape}")
+    print(f"Vanilla Transformer output shape: {output_vanilla.shape}")
+    print(f"Average inference time for Hadamard Transformer over {iterations} iterations: {total_time_hadamard / iterations:.6f} seconds")
+    print(f"Average inference time for Vanilla Transformer over {iterations} iterations: {total_time_vanilla / iterations:.6f} seconds")

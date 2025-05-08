@@ -44,7 +44,8 @@ from .models.efficient_stereo262_agclimg.trainer import Trainer as EfficientSter
 from .models.efficient_stereo263_agclimg.trainer import Trainer as EfficientStereo263Trainer
 from .models.lightstereo_eff1.trainer import Trainer as LightStereoEff1Trainer
 from .models.lightstereo_eff2_nolog.trainer import Trainer as LightStereoEff2Trainer
-from .models.lightstereo_eff3_combloss.trainer import Trainer as LightStereoEff3Trainer
+from .models.lightstereo_eff3_vatt.trainer import Trainer as LightStereoEff3Trainer
+from .models.lightstereo_eff4_hart.trainer import Trainer as LightStereoEff4Trainer
 
 # from .models.iinet.trainer import Trainer as IINetTrainer
 
@@ -101,6 +102,7 @@ __all__ = {
     'LightStereoEff1' : LightStereoEff1Trainer,
     'LightStereoEff2' : LightStereoEff2Trainer,
     'LightStereoEff3' : LightStereoEff3Trainer,
+    'LightStereoEff4' : LightStereoEff4Trainer,
 }
 
 

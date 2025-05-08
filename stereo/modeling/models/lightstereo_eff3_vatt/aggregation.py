@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from .transformer import LocalFeatureTransformer, LoFTREncoderLayer, PositionEncodingSine
 from .correlation import AGCL
-# from .mamba import VisionFoundationLayerDispCross
+from .mamba import VisionFoundationLayer
 
 class FPNLayer(nn.Module):
     def __init__(self, chan_low, chan_high):
@@ -53,13 +53,13 @@ class Aggregation(nn.Module):
                           self.group_wise_split_num[2]*self.search_num[2]]
 
         self.conv0_init = MobileV2Residual(self.corr_disp[0], self.attention_channels[0], stride=1, expanse_ratio=2)
-        conv0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        conv0 = [VisionFoundationLayer(window_size=8, dim=self.attention_channels[0], num_heads=8, vision_layer_type="attention")
                  for i in range(3)]
         self.conv0 = nn.Sequential(*conv0)
 
         self.conv1_init = MobileV2Residual(self.corr_disp[1], self.attention_channels[1], stride=1, expanse_ratio=2)
-        conv1 = [MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
-                    for i in range(3)]
+        conv1 = [VisionFoundationLayer(window_size=4, dim=self.attention_channels[1], num_heads=8, vision_layer_type="attention")
+                 for i in range(3)]
         self.conv1 = nn.Sequential(*conv1)
 
         self.conv2_init = MobileV2Residual(self.corr_disp[2], self.attention_channels[2], stride=1, expanse_ratio=2)
