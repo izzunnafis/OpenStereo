@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from .transformer import LocalFeatureTransformer, LoFTREncoderLayer, PositionEncodingSine
 from .correlation import AGCL
-from .mamba import VisionFoundationLayer, TransformerBlock
+from .mamba import VisionFoundationLayerDisp, VisionFoundationLayer, TransformerBlock
 
 class FPNLayer(nn.Module):
     def __init__(self, chan_low, chan_high):
@@ -36,7 +36,7 @@ class FPNLayer(nn.Module):
 
 
 class Aggregation(nn.Module):
-    def __init__(self, input_channel=[24, 32, 96], group_wise_split_num=[4,4,4], search_num=[25,16,9], corr_split_mode = [1,1,1], downsample_scale=[4, 8, 16], max_disp=192):
+    def __init__(self, input_channel=[24, 32, 96], group_wise_split_num=[4,4,4], search_num=[25,25,25], corr_split_mode = [1,1,1], downsample_scale=[4, 8, 16], max_disp=192):
         super(Aggregation, self).__init__()
 
         self.attention_channels = [96, 144, 192]
@@ -52,43 +52,43 @@ class Aggregation(nn.Module):
                           self.group_wise_split_num[1]*self.search_num[1],
                           self.group_wise_split_num[2]*self.search_num[2]]
 
-        self.conv0_init = MobileV2Residual(self.corr_disp[0], self.attention_channels[0], stride=1, expanse_ratio=2)
-        conv0 = [TransformerBlock(dim=self.attention_channels[0], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")
-                 for i in range(2)]
+        self.conv0_init = MobileV2Residual(self.corr_disp[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        conv0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+                 for i in range(3)]
         self.conv0 = nn.Sequential(*conv0)
 
-        self.conv1_init = MobileV2Residual(self.corr_disp[1], self.attention_channels[1], stride=1, expanse_ratio=2)
-        conv1 = [TransformerBlock(dim=self.attention_channels[1], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")
-                 for i in range(2)]
+        self.conv1_init = MobileV2Residual(self.corr_disp[1], self.attention_channels[1], stride=1, expanse_ratio=4)
+        conv1 = [MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
+                    for i in range(3)]
         self.conv1 = nn.Sequential(*conv1)
 
-        self.conv2_init = MobileV2Residual(self.corr_disp[2], self.attention_channels[2], stride=1, expanse_ratio=2)
-        conv2 = [TransformerBlock(dim=self.attention_channels[2], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")
-                    for i in range(2)]
+        self.conv2_init = MobileV2Residual(self.corr_disp[2], self.attention_channels[2], stride=1, expanse_ratio=4)
+        conv2 = [MobileV2Residual(self.attention_channels[2], self.attention_channels[2], stride=1, expanse_ratio=4)
+                    for i in range(3)]
         self.conv2 = nn.Sequential(*conv2)
 
-        self.att0 = AttentionModule(self.attention_channels[0], self.input_channel[0])
-        self.att1 = AttentionModule(self.attention_channels[1], self.input_channel[1])
-        self.att2 = AttentionModule(self.attention_channels[2], self.input_channel[2])        
+        self.conv_feat0 = MobileV2Residual(self.input_channel[0], self.attention_channels[0], stride=1, expanse_ratio=2)
+        self.conv_feat1 = MobileV2Residual(self.input_channel[1], self.attention_channels[1], stride=1, expanse_ratio=2)
+        self.conv_feat2 = MobileV2Residual(self.input_channel[2], self.attention_channels[2], stride=1, expanse_ratio=2)
 
-        # self.fpn_layer0 = FPNLayer(self.attention_channels[0], self.attention_channels[0])
-        self.fpn_layer1 = FPNLayer(self.attention_channels[1], self.attention_channels[0])
-        self.fpn_layer2 = FPNLayer(self.attention_channels[2], self.attention_channels[1])   
+        self.conv_down0 = nn.Conv2d(self.attention_channels[0], self.attention_channels[0], 2, padding=0, stride=2, bias=False)
+        self.conv_no1 = nn.Conv2d(self.attention_channels[1], self.attention_channels[1], 3, padding=1, stride=1, bias=False)
+        self.conv_up2 = nn.ConvTranspose2d(self.attention_channels[2], self.attention_channels[2], 2, padding=0, output_padding=0, stride=2, bias=False)
 
-        conv1_0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
-                    for i in range(2)]
-        self.conv1_0 = nn.Sequential(*conv1_0)
+        att_channel_sum = self.attention_channels[0] + self.attention_channels[1] + self.attention_channels[2]
+        self.feat_cat_conv = MobileV2Residual(att_channel_sum, att_channel_sum, stride=1, expanse_ratio=2)
 
-        conv1_1 = [MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
-                       for i in range(2)]
-        self.conv1_1 = nn.Sequential(*conv1_1)
+        self.feat_cat_up0 = nn.ConvTranspose2d(att_channel_sum, self.attention_channels[0], 2, padding=0, output_padding=0, stride=2, bias=False)
+        self.feat_cat_no1 = nn.Conv2d(att_channel_sum, self.attention_channels[1], 3, padding=1, stride=1, bias=False)
+        self.feat_cat_down2 = nn.Conv2d(att_channel_sum, self.attention_channels[2], 2, padding=0, stride=2, bias=False)
 
-        conv2_0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
-                    for i in range(4)]
-        self.conv2_0 = nn.Sequential(*conv2_0)
+        self.conv3_up1 = nn.Sequential(
+            nn.ConvTranspose2d(self.attention_channels[2], self.attention_channels[1], 3, padding=1, output_padding=1, stride=2, bias=False),
+            nn.BatchNorm2d(self.attention_channels[1]))
+        self.conv3_up2 = nn.Sequential(
+            nn.ConvTranspose2d(self.attention_channels[1], self.attention_channels[0], 3, padding=1, output_padding=1, stride=2, bias=False),
+            nn.BatchNorm2d(self.attention_channels[0]))
 
-        self.redir0 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
-        self.redir1 = MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
 
     def _init_weights(self):
             """Custom weight initialization to ensure positivity."""
@@ -112,26 +112,34 @@ class Aggregation(nn.Module):
         corr1 = self.process_corr(features_left[1], features_right[1],left_img, right_img, 1) #N, search_num*group_wise_split_num, H, W
         corr2 = self.process_corr(features_left[2], features_right[2],left_img, right_img, 2) #N, search_num*group_wise_split_num, H, W
 
-        vol0 = self.conv0_init(corr0) #N, attention_channels[0], H, W
-        vol0 = self.conv0(vol0) #N, attention_channels[0], H, W
-        vol1 = self.conv1_init(corr1) #N, attention_channels[1], H, W
-        vol1 = self.conv1(vol1) #N, attention_channels[1], H, W
-        vol2 = self.conv2_init(corr2) #N, attention_channels[2], H, W
-        vol2 = self.conv2(vol2) #N, attention_channels[2], H, W
+        feat_l0 = self.conv_feat0(features_left[0]) #N, attention_channels[0], H, W
+        feat_l1 = self.conv_feat1(features_left[1]) #N, attention_channels[1], H, W
+        feat_l2 = self.conv_feat2(features_left[2]) #N, attention_channels[2], H, W
 
-        # vol_att0 = self.att0(vol0, features_left[0]) #N, attention_channels[0], H, W
-        # vol_att1 = self.att1(vol1, features_left[1]) #N, attention_channels[1], H, W
-        # vol_att2 = self.att2(vol2, features_left[2]) #N, attention_channels[2], H, W
+        feat_cat = torch.cat((self.conv_down0(feat_l0), self.conv_no1(feat_l1), self.conv_up2(feat_l2)), dim=1) #N, attention_channels[0]+attention_channels[1]+attention_channels[2], H, W
+        feat_cat = self.feat_cat_conv(feat_cat) #N, attention_channels[0]+attention_channels[1]+attention_channels[2], H, W
+        feat_cat0 = F.sigmoid(feat_cat)
+        feat_cat2 = 1-F.sigmoid(feat_cat)
+        feat_cat1 = feat_cat
 
-        vol_att12 = self.fpn_layer2(vol2, vol1) #N, attention_channels[1], H, W
-        vol_att12 = F.relu(self.conv1_1(vol_att12) + self.redir1(vol1), inplace=True) #N, attention_channels[1], H, W
+        feat_cat0 = self.feat_cat_up0(feat_cat0) #N, attention_channels[0], H*2, W*2
+        feat_cat1 = F.sigmoid(self.feat_cat_no1(feat_cat1)) #N, attention_channels[1], H, W
+        feat_cat2 = self.feat_cat_down2(feat_cat2) #N, attention_channels[2], H/2, W/2
 
-        vol_att0 = self.conv1_0(vol0) #N, attention_channels[0], H, W
+        disp0 = self.conv0_init(corr0)*feat_cat0 #N, attention_channels[0], H, W
+        disp0 = self.conv0(disp0) #N, attention_channels[0], H, W
 
-        vol_att012 = self.fpn_layer1(vol_att12, vol_att0) #N, attention_channels[0], H, W
-        vol_att012 = F.relu(self.conv2_0(vol_att012) + self.redir0(vol_att0), inplace=True) #N, attention_channels[0], H, W
+        disp1 = self.conv1_init(corr1)*feat_cat1 #N, attention_channels[1], H, W
+        disp1 = self.conv1(disp1) #N, attention_channels[1], H, W
 
-        return vol_att012
+        disp2 = self.conv2_init(corr2)*feat_cat2 #N, attention_channels[2], H, W
+        disp2 = self.conv2(disp2) #N, attention_channels[2], H, W
+
+        disp21 = self.conv3_up1(disp2) + disp1 #N, attention_channels[1], H, W
+        disp_all = self.conv3_up2(disp21) + disp0 #N, attention_channels[0], H, W
+        disp_all = F.relu(disp_all, inplace=True) #N, attention_channels[0], H, W
+
+        return disp_all
     
 class MobileV2Residual(nn.Module):
     def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):

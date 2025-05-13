@@ -12,7 +12,7 @@ from stereo.modeling.models.lightstereo_eff1.backbone import Backbone
 from .aggregation import Aggregation, FPNLayer
 
 
-class LightStereoEff1(nn.Module):
+class LightStereoEff5(nn.Module):
     def __init__(self, cfgs):
         super().__init__()
         self.max_disp = cfgs.MAX_DISP

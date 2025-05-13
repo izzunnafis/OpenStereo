@@ -39,7 +39,7 @@ class Aggregation(nn.Module):
     def __init__(self, input_channel=[24, 32, 96], group_wise_split_num=[4,4,4], search_num=[25,16,9], corr_split_mode = [1,1,1], downsample_scale=[4, 8, 16], max_disp=192):
         super(Aggregation, self).__init__()
 
-        self.attention_channels = [96, 144, 192]
+        self.attention_channels = [48, 64, 96]
 
         self.input_channel = input_channel
         self.max_disp = max_disp
@@ -53,23 +53,34 @@ class Aggregation(nn.Module):
                           self.group_wise_split_num[2]*self.search_num[2]]
 
         self.conv0_init = MobileV2Residual(self.corr_disp[0], self.attention_channels[0], stride=1, expanse_ratio=2)
-        conv0 = [TransformerBlock(dim=self.attention_channels[0], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")
-                 for i in range(2)]
+        conv0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)]
         self.conv0 = nn.Sequential(*conv0)
+        transf0 = [TransformerBlock(dim=self.attention_channels[0], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")]
+        self.transf0 = nn.Sequential(*transf0)  
 
         self.conv1_init = MobileV2Residual(self.corr_disp[1], self.attention_channels[1], stride=1, expanse_ratio=2)
-        conv1 = [TransformerBlock(dim=self.attention_channels[1], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")
-                 for i in range(2)]
+        conv1 = [MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)]
         self.conv1 = nn.Sequential(*conv1)
+        transf1 = [TransformerBlock(dim=self.attention_channels[1], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")]
+        self.transf1 = nn.Sequential(*transf1)
 
         self.conv2_init = MobileV2Residual(self.corr_disp[2], self.attention_channels[2], stride=1, expanse_ratio=2)
-        conv2 = [TransformerBlock(dim=self.attention_channels[2], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")
-                    for i in range(2)]
+        conv2 = [MobileV2Residual(self.attention_channels[2], self.attention_channels[2], stride=1, expanse_ratio=4)]
         self.conv2 = nn.Sequential(*conv2)
+        transf2 = [TransformerBlock(dim=self.attention_channels[2], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias")]
+        self.transf2 = nn.Sequential(*transf2)
 
-        self.att0 = AttentionModule(self.attention_channels[0], self.input_channel[0])
-        self.att1 = AttentionModule(self.attention_channels[1], self.input_channel[1])
-        self.att2 = AttentionModule(self.attention_channels[2], self.input_channel[2])        
+        # self.att0 = AttentionModule(self.attention_channels[0], self.input_channel[0])
+        # self.att1 = AttentionModule(self.attention_channels[1], self.input_channel[1])
+        # self.att2 = AttentionModule(self.attention_channels[2], self.input_channel[2])        
+        self.att0 = nn.Sequential(nn.Conv2d(self.input_channel[0], self.attention_channels[0], kernel_size=1, stride=1, padding=0),
+            TransformerBlock(dim=self.attention_channels[0], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias"))
+        
+        self.att1 = nn.Sequential(nn.Conv2d(self.input_channel[1], self.attention_channels[1], kernel_size=1, stride=1, padding=0),
+            TransformerBlock(dim=self.attention_channels[1], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias"))
+        
+        self.att2 = nn.Sequential(nn.Conv2d(self.input_channel[2], self.attention_channels[2], kernel_size=1, stride=1, padding=0),
+            TransformerBlock(dim=self.attention_channels[2], num_heads=8, ffn_expansion_factor=2.66, bias=True, LayerNorm_type="WithBias"))
 
         # self.fpn_layer0 = FPNLayer(self.attention_channels[0], self.attention_channels[0])
         self.fpn_layer1 = FPNLayer(self.attention_channels[1], self.attention_channels[0])
@@ -113,20 +124,20 @@ class Aggregation(nn.Module):
         corr2 = self.process_corr(features_left[2], features_right[2],left_img, right_img, 2) #N, search_num*group_wise_split_num, H, W
 
         vol0 = self.conv0_init(corr0) #N, attention_channels[0], H, W
-        vol0 = self.conv0(vol0) #N, attention_channels[0], H, W
+        vol0 = self.conv0(vol0) + self.transf0(vol0) #N, attention_channels[0], H, W
         vol1 = self.conv1_init(corr1) #N, attention_channels[1], H, W
-        vol1 = self.conv1(vol1) #N, attention_channels[1], H, W
+        vol1 = self.conv1(vol1) + self.transf1(vol1) #N, attention_channels[1], H, W
         vol2 = self.conv2_init(corr2) #N, attention_channels[2], H, W
-        vol2 = self.conv2(vol2) #N, attention_channels[2], H, W
+        vol2 = self.conv2(vol2) + self.transf2(vol2) #N, attention_channels[2], H, W
 
-        # vol_att0 = self.att0(vol0, features_left[0]) #N, attention_channels[0], H, W
-        # vol_att1 = self.att1(vol1, features_left[1]) #N, attention_channels[1], H, W
-        # vol_att2 = self.att2(vol2, features_left[2]) #N, attention_channels[2], H, W
+        vol_att0 = self.att0(features_left[0])+vol0 #N, attention_channels[0], H, W
+        vol_att1 = self.att1(features_left[1])+vol1 #N, attention_channels[1], H, W
+        vol_att2 = self.att2(features_left[2])+vol2 #N, attention_channels[2], H, W
 
-        vol_att12 = self.fpn_layer2(vol2, vol1) #N, attention_channels[1], H, W
-        vol_att12 = F.relu(self.conv1_1(vol_att12) + self.redir1(vol1), inplace=True) #N, attention_channels[1], H, W
+        vol_att12 = self.fpn_layer2(vol_att2, vol_att1) #N, attention_channels[1], H, W
+        vol_att12 = F.relu(self.conv1_1(vol_att12) + self.redir1(vol_att1), inplace=True) #N, attention_channels[1], H, W
 
-        vol_att0 = self.conv1_0(vol0) #N, attention_channels[0], H, W
+        vol_att0 = self.conv1_0(vol_att0) #N, attention_channels[0], H, W
 
         vol_att012 = self.fpn_layer1(vol_att12, vol_att0) #N, attention_channels[0], H, W
         vol_att012 = F.relu(self.conv2_0(vol_att012) + self.redir0(vol_att0), inplace=True) #N, attention_channels[0], H, W

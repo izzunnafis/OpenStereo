@@ -34,7 +34,7 @@ DATA_CONFIG:
             - { NAME: NormalizeImage, MEAN: [ 0.485, 0.456, 0.406 ], STD: [ 0.229, 0.224, 0.225 ] }
 
 MODEL:
-    NAME: LightStereoEff4
+    NAME: LightStereoEff7
     MAX_DISP: 192
     EXPANSE_RATIO: 4
     AGGREGATION_BLOCKS: [ 1, 2, 4 ]
@@ -52,8 +52,8 @@ OPTIMIZATION:
 
     OPTIMIZER:
         NAME: AdamW
-        LR: &lr 0.0008
-        WEIGHT_DECAY: 1.0e-05
+        LR: &lr 0.002
+        WEIGHT_DECAY: 0.0 #1.0e-05
         EPS: 1.0e-08
 
     SCHEDULER:

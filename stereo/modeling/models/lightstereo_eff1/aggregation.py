@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from .transformer import LocalFeatureTransformer, LoFTREncoderLayer, PositionEncodingSine
 from .correlation import AGCL
-# from .mamba import VisionFoundationLayerDispCross
+from .mamba import VisionFoundationLayerDisp, VisionFoundationLayer
 
 class FPNLayer(nn.Module):
     def __init__(self, chan_low, chan_high):
@@ -39,7 +39,7 @@ class Aggregation(nn.Module):
     def __init__(self, input_channel=[24, 32, 96], group_wise_split_num=[4,4,4], search_num=[25,16,9], corr_split_mode = [1,1,1], downsample_scale=[4, 8, 16], max_disp=192):
         super(Aggregation, self).__init__()
 
-        self.attention_channels = [48, 64, 96]
+        self.attention_channels = [96, 144, 192]
 
         self.input_channel = input_channel
         self.max_disp = max_disp
@@ -52,24 +52,24 @@ class Aggregation(nn.Module):
                           self.group_wise_split_num[1]*self.search_num[1],
                           self.group_wise_split_num[2]*self.search_num[2]]
 
-        self.conv0_init = MobileV2Residual(self.corr_disp[0], self.attention_channels[0], stride=1, expanse_ratio=2)
+        self.conv0_init = MobileV2Residual(self.corr_disp[0], self.attention_channels[0], stride=1, expanse_ratio=4)
         conv0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
                  for i in range(3)]
         self.conv0 = nn.Sequential(*conv0)
 
-        self.conv1_init = MobileV2Residual(self.corr_disp[1], self.attention_channels[1], stride=1, expanse_ratio=2)
+        self.conv1_init = MobileV2Residual(self.corr_disp[1], self.attention_channels[1], stride=1, expanse_ratio=4)
         conv1 = [MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
                     for i in range(3)]
         self.conv1 = nn.Sequential(*conv1)
 
-        self.conv2_init = MobileV2Residual(self.corr_disp[2], self.attention_channels[2], stride=1, expanse_ratio=2)
+        self.conv2_init = MobileV2Residual(self.corr_disp[2], self.attention_channels[2], stride=1, expanse_ratio=4)
         conv2 = [MobileV2Residual(self.attention_channels[2], self.attention_channels[2], stride=1, expanse_ratio=4)
                     for i in range(3)]
         self.conv2 = nn.Sequential(*conv2)
 
-        self.att0 = AttentionModule(self.attention_channels[0], self.input_channel[0])
-        self.att1 = AttentionModule(self.attention_channels[1], self.input_channel[1])
-        self.att2 = AttentionModule(self.attention_channels[2], self.input_channel[2])        
+        # self.att0 = AttentionModule(self.attention_channels[0], self.input_channel[0])
+        # self.att1 = AttentionModule(self.attention_channels[1], self.input_channel[1])
+        # self.att2 = AttentionModule(self.attention_channels[2], self.input_channel[2])        
 
         # self.fpn_layer0 = FPNLayer(self.attention_channels[0], self.attention_channels[0])
         self.fpn_layer1 = FPNLayer(self.attention_channels[1], self.attention_channels[0])
