@@ -67,9 +67,28 @@ class Aggregation(nn.Module):
                     for i in range(3)]
         self.conv2 = nn.Sequential(*conv2)
 
-        # self.att0 = AttentionModule(self.attention_channels[0], self.input_channel[0])
-        # self.att1 = AttentionModule(self.attention_channels[1], self.input_channel[1])
-        # self.att2 = AttentionModule(self.attention_channels[2], self.input_channel[2])        
+        # self.conv_no0 = BasicConv2d(self.input_channel[0], self.attention_channels[0], kernel_size=3, padding=1,
+        #                         norm_layer=nn.BatchNorm2d,
+        #                         act_layer=partial(nn.LeakyReLU, negative_slope=0.2, inplace=True))
+        # self.conv_up21 = BasicDeconv2d(self.input_channel[2], self.attention_channels[1], kernel_size=4, stride=2, padding=1,
+        #                             norm_layer=nn.BatchNorm2d,
+        #                             act_layer=partial(nn.LeakyReLU, negative_slope=0.2, inplace=True))
+        # self.conv_up22 = BasicDeconv2d(self.attention_channels[1], self.attention_channels[0], kernel_size=4, stride=2, padding=1,
+        #                             norm_layer=nn.BatchNorm2d,
+        #                             act_layer=partial(nn.LeakyReLU, negative_slope=0.2, inplace=True))
+
+        self.attention_feat = AttentionModule(self.attention_channels[0], self.input_channel[0])
+
+        # self.feat_l_init = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        # feat_l = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        #                              for i in range(2)]
+        # self.feat_l = nn.Sequential(*feat_l)
+        
+        # self.feat_h_init = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        # self.feat_h = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        #                                 for i in range(2)]
+        # self.feat_h = nn.Sequential(*self.feat_h)
+
 
         # self.fpn_layer0 = FPNLayer(self.attention_channels[0], self.attention_channels[0])
         self.fpn_layer1 = FPNLayer(self.attention_channels[1], self.attention_channels[0])
@@ -84,11 +103,27 @@ class Aggregation(nn.Module):
         self.conv1_1 = nn.Sequential(*conv1_1)
 
         conv2_0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
-                    for i in range(4)]
+                    for i in range(2)]
         self.conv2_0 = nn.Sequential(*conv2_0)
 
-        self.redir0 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
-        self.redir1 = MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
+
+        self.conv_l_down0 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=2, expanse_ratio=1)
+        self.conv_l_down1 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=2, expanse_ratio=1)
+        self.conv_l_up1 =  BasicDeconv2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=2, padding=1,
+                                    norm_layer=nn.BatchNorm2d,
+                                    act_layer=partial(nn.ReLU6, inplace=True))
+        self.conv_l_up0 = BasicDeconv2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=2, padding=1,
+                                    norm_layer=nn.BatchNorm2d,
+                                    act_layer=partial(nn.ReLU6, inplace=True))
+        # self.conv_l = nn.Sequential(*conv_l)
+
+        conv_h = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+                 for i in range(2)]
+        self.conv_h = nn.Sequential(*conv_h)
+
+
+        self.redir0 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=1/4)
+        self.redir1 = MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=1/4)
 
     def _init_weights(self):
             """Custom weight initialization to ensure positivity."""
@@ -119,19 +154,41 @@ class Aggregation(nn.Module):
         vol2 = self.conv2_init(corr2) #N, attention_channels[2], H, W
         vol2 = self.conv2(vol2) #N, attention_channels[2], H, W
 
-        # vol_att0 = self.att0(vol0, features_left[0]) #N, attention_channels[0], H, W
-        # vol_att1 = self.att1(vol1, features_left[1]) #N, attention_channels[1], H, W
-        # vol_att2 = self.att2(vol2, features_left[2]) #N, attention_channels[2], H, W
+        feat = self.attention_feat(features_left[0]) #N, attention_channels[0], H, W
+
+        feat_l = F.sigmoid(feat)
+        feat_h = 1-feat_l
+
+        # feat_l = self.feat_l_init(feat_l) #N, attention_channels[0], H, W
+        # feat_l = self.feat_l(feat_l) #N, attention_channels[0], H, W
+        # feat_l = F.sigmoid(feat_l) #N, attention_channels[0], H, W
+
+        # feat_h = self.feat_h_init(feat_h) #N, attention_channels[0], H, W
+        # feat_h = self.feat_h(feat_h) #N, attention_channels[0], H, W
+        # feat_h = F.sigmoid(feat_h) #N, attention_channels[0], H, W
 
         vol_att12 = self.fpn_layer2(vol2, vol1) #N, attention_channels[1], H, W
-        vol_att12 = F.relu(self.conv1_1(vol_att12) + self.redir1(vol1), inplace=True) #N, attention_channels[1], H, W
+        vol_att12 = F.relu(self.conv1_1(vol_att12) + self.redir1(vol1)) #N, attention_channels[1], H, W
 
         vol_att0 = self.conv1_0(vol0) #N, attention_channels[0], H, W
 
         vol_att012 = self.fpn_layer1(vol_att12, vol_att0) #N, attention_channels[0], H, W
-        vol_att012 = F.relu(self.conv2_0(vol_att012) + self.redir0(vol_att0), inplace=True) #N, attention_channels[0], H, W
+        # vol_att012 = F.relu(self.conv2_0(vol_att012) + self.redir0(vol_att0), inplace=True) #N, attention_channels[0], H, W
+        vol_att012 = F.relu(self.conv2_0(vol_att012) + self.redir0(vol0)) #N, attention_channels[0], H, W
 
-        return vol_att012
+        vol_l = vol_att012 * feat_l #N, attention_channels[0], H, W
+        vol_h = vol_att012 * feat_h
+
+        vol_l_1_down = self.conv_l_down0(vol_l) #N, attention_channels[0], H/2, W/2
+        vol_l_2_down = self.conv_l_down1(vol_l_1_down) #N, attention_channels[0], H/4, W/4
+        vol_l_1_up = self.conv_l_up1(vol_l_2_down) + vol_l_1_down #N, attention_channels[0], H/2, W/2
+        vol_l = self.conv_l_up0(vol_l_1_up) + vol_l #N, attention_channels[0], H, W
+
+        vol_h = self.conv_h(vol_h) #N, attention_channels[0], H, W
+
+        vol_all = F.relu(vol_l*feat_l + vol_h*feat_h, inplace=True) #N, attention_channels[0], H, W
+
+        return vol_all
     
 class MobileV2Residual(nn.Module):
     def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
@@ -171,6 +228,26 @@ class MobileV2Residual(nn.Module):
         else:
             return feat
 
+class MobileOneBlock(nn.Module):
+    def __init__(self, in_ch, out_ch, stride=1):
+        super().__init__()
+        self.conv_3x3 = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, 3, stride, 1, bias=False),
+            nn.BatchNorm2d(out_ch)
+        )
+        self.conv_1x1 = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, 1, stride, 0, bias=False),
+            nn.BatchNorm2d(out_ch)
+        )
+        self.identity = nn.BatchNorm2d(in_ch) if stride == 1 and in_ch == out_ch else None
+        self.act = nn.ReLU()
+
+    def forward(self, x):
+        out = self.conv_3x3(x) + self.conv_1x1(x)
+        if self.identity is not None:
+            out += self.identity(x)
+        return self.act(out)
+    
 
 class AttentionModule(nn.Module):
     def __init__(self, dim, img_feat_dim):
@@ -188,7 +265,7 @@ class AttentionModule(nn.Module):
 
         self.conv3 = nn.Conv2d(dim, dim, 1)
 
-    def forward(self, cost, x):
+    def forward(self, x):
         attn = self.conv0(x)
 
         attn_0 = self.conv0_1(attn)
@@ -202,7 +279,7 @@ class AttentionModule(nn.Module):
 
         attn = attn + attn_0 + attn_1 + attn_2
         attn = self.conv3(attn)
-        return attn * cost
+        return attn
 
 
 if __name__ == "__main__":
