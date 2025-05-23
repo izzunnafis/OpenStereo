@@ -13,43 +13,7 @@ from .models.psmnet.trainer import Trainer as PSMNetTrainer
 from .models.sttr.trainer import Trainer as STTRTrainer
 from .models.lightstereo.trainer import Trainer as LightStereoTrainer
 from .models.stereobase.trainer import Trainer as StereoBaseGRUTrainer
-from .models.efficient_stereo.trainer import Trainer as EfficientStereoTrainer
-from .models.efficient_stereo2.trainer import Trainer as EfficientStereo2Trainer
-from .models.efficient_stereo3.trainer import Trainer as EfficientStereo3Trainer
-from .models.efficient_stereo4.trainer import Trainer as EfficientStereo4Trainer
-from .models.efficient_stereo5.trainer import Trainer as EfficientStereo5Trainer
-from .models.efficient_stereo6.trainer import Trainer as EfficientStereo6Trainer
-from .models.efficient_stereo7.trainer import Trainer as EfficientStereo7Trainer
-from .models.efficient_stereo8.trainer import Trainer as EfficientStereo8Trainer
-from .models.efficient_stereo9.trainer import Trainer as EfficientStereo9Trainer
-from .models.efficient_stereo10.trainer import Trainer as EfficientStereo10Trainer
-from .models.efficient_stereo11.trainer import Trainer as EfficientStereo11Trainer
-from .models.efficient_stereo12.trainer import Trainer as EfficientStereo12Trainer
-from .models.efficient_stereo13.trainer import Trainer as EfficientStereo13Trainer
-from .models.efficient_stereo14_cat.trainer import Trainer as EfficientStereo14Trainer
-from .models.efficient_stereo15_comb.trainer import Trainer as EfficientStereo15Trainer
-from .models.efficient_stereo16_better_disp.trainer import Trainer as EfficientStereo16Trainer
-from .models.efficient_stereo17_att.trainer import Trainer as EfficientStereo17Trainer
-from .models.efficient_stereo18_attdisp.trainer import Trainer as EfficientStereo18Trainer
-from .models.efficient_stereo19_attdispcomb.trainer import Trainer as EfficientStereo19Trainer
-from .models.efficient_stereo20_parrattconv.trainer import Trainer as EfficientStereo20Trainer
-from .models.efficient_stereo21_parrattconvall.trainer import Trainer as EfficientStereo21Trainer
-from .models.efficient_stereo22_parrattconveff.trainer import Trainer as EfficientStereo22Trainer
-from .models.efficient_stereo23_corrimg.trainer import Trainer as EfficientStereo23Trainer
-from .models.efficient_stereo24_corrimg_simp.trainer import Trainer as EfficientStereo24Trainer
-from .models.efficient_stereo25_corrimg_simp2.trainer import Trainer as EfficientStereo25Trainer
-from .models.efficient_stereo26_agclimg.trainer import Trainer as EfficientStereo26Trainer
-from .models.efficient_stereo27_agclimgatt.trainer import Trainer as EfficientStereo27Trainer
-from .models.efficient_stereo262_agclimg.trainer import Trainer as EfficientStereo262Trainer
-from .models.efficient_stereo263_agclimg.trainer import Trainer as EfficientStereo263Trainer
 from .models.lightstereo_eff1.trainer import Trainer as LightStereoEff1Trainer
-from .models.lightstereo_eff2_nolog.trainer import Trainer as LightStereoEff2Trainer
-from .models.lightstereo_eff3_vatt.trainer import Trainer as LightStereoEff3Trainer
-from .models.lightstereo_eff4_hart.trainer import Trainer as LightStereoEff4Trainer
-from .models.lightstereo_eff5_hart_parr.trainer import Trainer as LightStereoEff5Trainer
-from .models.lightstereo_eff6_low.trainer import Trainer as LightStereoEff6Trainer
-from .models.lightstereo_eff7_freq.trainer import Trainer as LightStereoEff7Trainer
-from .models.lightstereo_eff8_freq2.trainer import Trainer as LightStereoEff8Trainer
 # from .models.lightstereo_eff1copy.trainer import Trainer as LightStereoEffTestTrainer
 
 # from .models.iinet.trainer import Trainer as IINetTrainer
@@ -75,43 +39,7 @@ __all__ = {
     'StereoBaseGRU': StereoBaseGRUTrainer,
     # 'IInet': IINetTrainer,
     'NMRF': NMRFTrainer,
-    'EfficientStereo' : EfficientStereoTrainer,
-    'EfficientStereo2' : EfficientStereo2Trainer,
-    "EfficientStereo3" : EfficientStereo3Trainer,
-    "EfficientStereo4" : EfficientStereo4Trainer,
-    "EfficientStereo5" : EfficientStereo5Trainer,
-    "EfficientStereo6" : EfficientStereo6Trainer,
-    "EfficientStereo7" : EfficientStereo7Trainer,
-    "EfficientStereo8" : EfficientStereo8Trainer,
-    'EfficientStereo9' : EfficientStereo9Trainer,
-    'EfficientStereo10' : EfficientStereo10Trainer,
-    'EfficientStereo11' : EfficientStereo11Trainer,
-    'EfficientStereo12' : EfficientStereo12Trainer,
-    'EfficientStereo13' : EfficientStereo13Trainer,
-    'EfficientStereo14' : EfficientStereo14Trainer,
-    'EfficientStereo15' : EfficientStereo15Trainer,
-    'EfficientStereo16' : EfficientStereo16Trainer,
-    'EfficientStereo17' : EfficientStereo17Trainer,
-    'EfficientStereo18' : EfficientStereo18Trainer,
-    'EfficientStereo19' : EfficientStereo19Trainer,
-    'EfficientStereo20' : EfficientStereo20Trainer,
-    'EfficientStereo21' : EfficientStereo21Trainer,
-    'EfficientStereo22' : EfficientStereo22Trainer,
-    'EfficientStereo23' : EfficientStereo23Trainer,
-    'EfficientStereo24' : EfficientStereo24Trainer,
-    'EfficientStereo25' : EfficientStereo25Trainer,
-    'EfficientStereo26' : EfficientStereo26Trainer,
-    'EfficientStereo27' : EfficientStereo27Trainer,
-    'EfficientStereo262' : EfficientStereo262Trainer,
-    'EfficientStereo263' : EfficientStereo263Trainer,
     'LightStereoEff1' : LightStereoEff1Trainer,
-    'LightStereoEff2' : LightStereoEff2Trainer,
-    'LightStereoEff3' : LightStereoEff3Trainer,
-    'LightStereoEff4' : LightStereoEff4Trainer,
-    'LightStereoEff5' : LightStereoEff5Trainer,
-    'LightStereoEff6' : LightStereoEff6Trainer,
-    'LightStereoEff7' : LightStereoEff7Trainer,
-    'LightStereoEff8' : LightStereoEff8Trainer,
     # 'LightStereoEffTest' : LightStereoEffTestTrainer,
 }
 
