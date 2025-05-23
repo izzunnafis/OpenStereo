@@ -49,6 +49,8 @@ from .models.lightstereo_eff4_hart.trainer import Trainer as LightStereoEff4Trai
 from .models.lightstereo_eff5_hart_parr.trainer import Trainer as LightStereoEff5Trainer
 from .models.lightstereo_eff6_low.trainer import Trainer as LightStereoEff6Trainer
 from .models.lightstereo_eff7_freq.trainer import Trainer as LightStereoEff7Trainer
+from .models.lightstereo_eff8_freq2.trainer import Trainer as LightStereoEff8Trainer
+# from .models.lightstereo_eff1copy.trainer import Trainer as LightStereoEffTestTrainer
 
 # from .models.iinet.trainer import Trainer as IINetTrainer
 
@@ -109,7 +111,8 @@ __all__ = {
     'LightStereoEff5' : LightStereoEff5Trainer,
     'LightStereoEff6' : LightStereoEff6Trainer,
     'LightStereoEff7' : LightStereoEff7Trainer,
-
+    'LightStereoEff8' : LightStereoEff8Trainer,
+    # 'LightStereoEffTest' : LightStereoEffTestTrainer,
 }
 
 

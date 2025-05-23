@@ -277,6 +277,7 @@ class TrainerTemplate:
             with torch.cuda.amp.autocast(enabled=self.cfgs.OPTIMIZATION.AMP):
                 infer_start = time.time()
                 model_pred = self.model(data)
+                torch.cuda.synchronize()
                 infer_time = time.time() - infer_start
 
             disp_pred = model_pred['disp_pred']

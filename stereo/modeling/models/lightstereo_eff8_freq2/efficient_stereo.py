@@ -3,19 +3,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from stereo.modeling.common.basic_block_2d import BasicConv2d, BasicDeconv2d
 from stereo.modeling.cost_volume.cost_volume import correlation_volume
-from stereo.modeling.disp_pred.disp_regression import disparity_regression, disparity_regression2
+from stereo.modeling.disp_pred.disp_regression import disparity_regression
 from stereo.modeling.disp_refinement.disp_refinement import context_upsample, context_upsample_only
 
 from stereo.modeling.models.lightstereo_eff1.backbone import Backbone
-
-import time
-
 
 # from .backbone import Backbone
 from .aggregation import Aggregation, FPNLayer
 
 
-class LightStereoEff1(nn.Module):
+class LightStereoEff8(nn.Module):
     def __init__(self, cfgs):
         super().__init__()
         self.max_disp = cfgs.MAX_DISP
@@ -46,50 +43,32 @@ class LightStereoEff1(nn.Module):
         
 
     def forward(self, data):
-        # time_start = time.time()
         image1 = data['left']
         image2 = data['right']
-        # torch.cuda.synchronize()
-        # print('time_start:', time_start-time.time())
 
-        # time1 = time.time()
         features_left = self.backbone(image1)
         features_right = self.backbone(image2)
-        # torch.cuda.synchronize()
-        # print("time_backbone:", time.time()-time1)
 
-        # time2 = time.time()
-        encoded_vol, feat_l, feat_h = self.cost_agg(features_left, features_right, image1, image2) # [bz, self.attention_channels[0], H/4, W/4]
-        # torch.cuda.synchronize()
-        # print("time_cost_agg:", time.time()-time2)
+        encoded_vol = self.cost_agg(features_left, features_right, image1, image2) # [bz, self.attention_channels[0], H/4, W/4]
 
-        # time3 = time.time()
         prob_vol = F.softmax(encoded_vol, dim=1)
         init_disp = disparity_regression(prob_vol, self.max_disp // 4)  # [bz, 1, H/4, W/4]
-        # torch.cuda.synchronize()
-        # print("time_disp_regression:", time.time()-time3)
 
-        # time4 = time.time()
         xspx = self.refine_1(features_left[0])
         xspx = self.refine_2(xspx, self.stem_2(image1))
         xspx = self.refine_3(xspx)
         spx_pred = F.softmax(xspx, 1)  # [bz, 9, H, W]
         disp_pred = context_upsample(init_disp * 4., spx_pred).unsqueeze(1)  # # [bz, 1, H, W]
-        # torch.cuda.synchronize()
-        # print("time_refine:", time.time()-time4)
 
-        result = {'disp_pred' : disp_pred, 'feat_l': feat_l, 'feat_h': feat_h}
+        result = {'disp_pred' : disp_pred}
 
-        # time5 = time.time()
         if self.training:
             disp_4 = F.interpolate(init_disp, image1.shape[2:], mode='bilinear', align_corners=False)
             disp_4 *= 4
             result['disp_4'] = disp_4
-        # torch.cuda.synchronize()
-        # print("time_training:", time.time()-time5)
-        # print("total_time:", time.time()-time_start)
         
         return result
+
 
     def get_loss(self, model_pred, input_data):
         disp_gt = input_data["disp"]  # [bz, h, w]
@@ -101,16 +80,16 @@ class LightStereoEff1(nn.Module):
         if torch.isnan(disp_pred).any() or torch.isinf(disp_pred).any():
             print('disp_pred has nan or inf')
             disp_pred = torch.nan_to_num(disp_pred, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
-        # loss = self.loss_func(disp_pred[mask], disp_gt[mask])
-        loss = F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
+        # loss = 1.0 * F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
+        loss = self.loss_func(disp_pred[mask], disp_gt[mask])
 
         disp_4 = model_pred['disp_4']
         disp_4 = torch.clamp(disp_4, min=1e-6, max=self.max_disp)
         if torch.isnan(disp_4).any() or torch.isinf(disp_4).any():
             print('disp_4 has nan or inf')
             disp_4 = torch.nan_to_num(disp_4, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
-        # loss += 0.3 * self.loss_func(disp_4[mask], disp_gt[mask])
-        loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
+        # loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
+        loss += 0.3 * self.loss_func(disp_4[mask], disp_gt[mask])
 
         if torch.isnan(loss).any() or torch.isinf(loss).any():
             print('loss has nan or inf')

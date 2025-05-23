@@ -13,6 +13,7 @@ from stereo.modeling import build_trainer
 from stereo.utils.disp_color import disp_to_color
 from stereo.datasets.dataset_template import build_transform_by_cfg
 import time
+from thop import profile
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
@@ -25,11 +26,18 @@ def parse_config():
     parser.add_argument('--savename', type=str, default=None)
 
     args = parser.parse_args()
-    args.cfg_file = "cfgs/efficientstereo/efficientstereo2_kitti.yaml"
-    folder = "/home/rispro-sils/ADAS_Kedaireka/Dataset/Manually_gathered_17_07_24/data_img"
-    args.left_img_path = os.path.join(folder, "20241210-182042-852_frame.png")
-    args.right_img_path = os.path.join(folder, "20241210-182042-924_frame2.png")
-    args.pretrained_model = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/EfficientStereo2/efficientstereo2_kitti/default/ckpt/checkpoint_epoch_49.pth"
+    args.cfg_file = "cfgs/efficientstereo/lse3_kitti_test.yaml"
+    # args.cfg_file = "cfgs/efficientstereo/lightstereo_m_kitti.yaml"
+    # folder = "/home/rispro-sils/ADAS_Kedaireka/Dataset/Manually_gathered_17_07_24/data_img"
+    folder = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/data/KITTI15/kitti15/testing"
+    # args.left_img_path = os.path.join(folder, "20241210-182042-852_frame.png")
+    # args.right_img_path = os.path.join(folder, "20241210-182042-924_frame2.png")
+    args.left_img_path = os.path.join(folder, "image_2/000003_11.png")
+    args.right_img_path = os.path.join(folder, "image_3/000003_11.png")
+    parent = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/LightStereoEff1"
+    you = "lse3_kitti_m_fix"
+    child = "default/ckpt/checkpoint_epoch_499.pth"
+    args.pretrained_model = os.path.join(parent, you, child)
     args.savename = "output.png"
     yaml_config = common_utils.config_loader(args.cfg_file)
     cfgs = EasyDict(yaml_config)
@@ -85,29 +93,90 @@ def main():
     for k, v in sample.items():
         sample[k] = v.to(local_rank) if torch.is_tensor(v) else v
 
+    # Check if the model is on GPU or CPU
+    device = next(model.parameters()).device
+    logger.info(f"Model is on device: {device}")
+
+    # Check if the images are on GPU or CPU
+    for key, value in sample.items():
+        if torch.is_tensor(value):
+            logger.info(f"Sample '{key}' is on device: {value.device}")
+
     with torch.cuda.amp.autocast(enabled=cfgs.OPTIMIZATION.AMP):
         # Warm-up
-        model_pred = model(sample)
-
-        # Measure inference time for 100 iterations
-        start_time = time.time()
         for _ in range(100):
             model_pred = model(sample)
+
+        # Measure inference time for 200 iterations
+        start_time = time.time()
+        for _ in range(200):
+            # st_time = time.time()
+            with torch.cuda.amp.autocast(enabled=cfgs.OPTIMIZATION.AMP):
+                model_pred = model(sample)
+            torch.cuda.synchronize()
+            # print(f"Iteration time: {time.time() - st_time:.6f} seconds")
         end_time = time.time()
 
         # Calculate average inference time
-        avg_inference_time = (end_time - start_time) / 100
+        avg_inference_time = (end_time - start_time) / 200 * 1000
 
         # Log model name and image size
         logger.info(f"Model Name: {cfgs.MODEL.NAME}")
         logger.info(f"Image Size: {left_img.shape[1]}x{left_img.shape[0]}")
-        logger.info(f"Average Inference Time: {avg_inference_time:.6f} seconds")
+        logger.info(f"Average Inference Time: {avg_inference_time:.6f} ms")
+        # Calculate MACs and FLOPs
+        macs, params = profile(model, inputs=(sample,))
+        logger.info(f"MACs: {macs / 1e9:.3f} G")
+        logger.info(f"Parameters: {params / 1e6:.3f} M")
 
     disp_pred = model_pred['disp_pred'].squeeze().cpu().numpy()
     img_color = disp_to_color(disp_pred, max_disp=192)
     img_color = img_color.astype('uint8')
     img_color = Image.fromarray(img_color)
     img_color.save(args.savename)
+
+
+    # Interpolate feat_l to match the original image size
+    import torch.nn.functional as F
+    feat_l = model_pred['feat_l']
+    original_size = (left_img.shape[0], left_img.shape[1])  # (height, width)
+    feat_l = F.interpolate(feat_l, size=original_size, mode='nearest')
+    feat_l = feat_l.squeeze().cpu().numpy()  # Remove batch and channel dimensions
+
+    feat_avg = np.mean(feat_l, axis=0)
+    feat_avg = (feat_avg - feat_avg.min()) / (feat_avg.max() - feat_avg.min()) * 255
+    feat_avg = feat_avg.astype('uint8')
+    feat_avg = Image.fromarray(feat_avg)
+    feat_avg.save("feat_l_avg.png")
+    logger.info("Average feature map saved as feat_l_avg.png")
+    
+    for i in range(feat_l.shape[0]):
+        feat = feat_l[i]
+        feat = (feat - feat.min()) / (feat.max() - feat.min()) * 255
+        feat = feat.astype('uint8')
+        feat = Image.fromarray(feat)
+        feat.save(f"feat_l_{i}.png")
+        logger.info(f"Feature map {i} saved as feat_l_{i}.png")
+
+    feat_h = model_pred['feat_h']
+    original_size = (left_img.shape[0], left_img.shape[1])
+    feat_h = F.interpolate(feat_h, size=original_size, mode='nearest')
+    feat_h = feat_h.squeeze().cpu().numpy()
+    feat_avg = np.mean(feat_h, axis=0)
+    feat_avg = (feat_avg - feat_avg.min()) / (feat_avg.max() - feat_avg.min()) * 255
+    feat_avg = feat_avg.astype('uint8')
+    feat_avg = Image.fromarray(feat_avg)
+    feat_avg.save("feat_h_avg.png")
+    logger.info("Average feature map saved as feat_h_avg.png")
+
+    for i in range(feat_h.shape[0]):
+        feat = feat_h[i]
+        feat = (feat - feat.min()) / (feat.max() - feat.min()) * 255
+        feat = feat.astype('uint8')
+        feat = Image.fromarray(feat)
+        feat.save(f"feat_h_{i}.png")
+        logger.info(f"Feature map {i} saved as feat_h_{i}.png")
+
 
 
 if __name__ == '__main__':

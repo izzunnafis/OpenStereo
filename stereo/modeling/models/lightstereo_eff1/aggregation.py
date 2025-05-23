@@ -11,6 +11,8 @@ from stereo.modeling.cost_volume.cost_volume import correlation_volume
 import sys
 import os
 
+import time
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from .transformer import LocalFeatureTransformer, LoFTREncoderLayer, PositionEncodingSine
@@ -35,11 +37,29 @@ class FPNLayer(nn.Module):
         return feat
 
 
+class FPNLayer(nn.Module):
+    def __init__(self, chan_low, chan_high):
+        super().__init__()
+        self.deconv = BasicDeconv2d(chan_low, chan_high, kernel_size=4, stride=2, padding=1,
+                                    norm_layer=nn.BatchNorm2d,
+                                    act_layer=partial(nn.LeakyReLU, negative_slope=0.2, inplace=True))
+
+        self.conv = BasicConv2d(chan_high * 2, chan_high, kernel_size=3, padding=1,
+                                norm_layer=nn.BatchNorm2d,
+                                act_layer=partial(nn.LeakyReLU, negative_slope=0.2, inplace=True))
+
+    def forward(self, low, high):
+        low = self.deconv(low)
+        feat = torch.cat([high, low], 1)
+        feat = self.conv(feat)
+        return feat
+
+
 class Aggregation(nn.Module):
-    def __init__(self, input_channel=[24, 32, 96], group_wise_split_num=[4,4,4], search_num=[25,16,9], corr_split_mode = [1,1,1], downsample_scale=[4, 8, 16], max_disp=192):
+    def __init__(self, input_channel=[24, 32, 96], group_wise_split_num=[4,4,4], search_num=[49,36,25], corr_split_mode = [1,1,1], downsample_scale=[4, 8, 16], max_disp=192):
         super(Aggregation, self).__init__()
 
-        self.attention_channels = [96, 144, 192]
+        self.attention_channels = [48, 64, 96]
 
         self.input_channel = input_channel
         self.max_disp = max_disp
@@ -53,19 +73,22 @@ class Aggregation(nn.Module):
                           self.group_wise_split_num[2]*self.search_num[2]]
 
         self.conv0_init = MobileV2Residual(self.corr_disp[0], self.attention_channels[0], stride=1, expanse_ratio=4)
-        conv0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
-                 for i in range(3)]
-        self.conv0 = nn.Sequential(*conv0)
+        self.conv1 = MobileV2Residual(self.attention_channels[0], self.attention_channels[1], stride=2, expanse_ratio=4)
+        self.conv2 = MobileV2Residual(self.attention_channels[1], self.attention_channels[2], stride=2, expanse_ratio=4)
 
-        self.conv1_init = MobileV2Residual(self.corr_disp[1], self.attention_channels[1], stride=1, expanse_ratio=4)
-        conv1 = [MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
-                    for i in range(3)]
-        self.conv1 = nn.Sequential(*conv1)
+        # conv0 = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        #          for i in range(3)]
+        # self.conv0 = nn.Sequential(*conv0)
 
-        self.conv2_init = MobileV2Residual(self.corr_disp[2], self.attention_channels[2], stride=1, expanse_ratio=4)
-        conv2 = [MobileV2Residual(self.attention_channels[2], self.attention_channels[2], stride=1, expanse_ratio=4)
-                    for i in range(3)]
-        self.conv2 = nn.Sequential(*conv2)
+        # self.conv1_init = MobileV2Residual(self.corr_disp[1], self.attention_channels[1], stride=1, expanse_ratio=4)
+        # conv1 = [MobileV2Residual(self.attention_channels[1], self.attention_channels[1], stride=1, expanse_ratio=4)
+        #             for i in range(3)]
+        # self.conv1 = nn.Sequential(*conv1)
+
+        # self.conv2_init = MobileV2Residual(self.corr_disp[2], self.attention_channels[2], stride=1, expanse_ratio=4)
+        # conv2 = [MobileV2Residual(self.attention_channels[2], self.attention_channels[2], stride=1, expanse_ratio=4)
+        #             for i in range(3)]
+        # self.conv2 = nn.Sequential(*conv2)
 
         # self.conv_no0 = BasicConv2d(self.input_channel[0], self.attention_channels[0], kernel_size=3, padding=1,
         #                         norm_layer=nn.BatchNorm2d,
@@ -107,18 +130,20 @@ class Aggregation(nn.Module):
         self.conv2_0 = nn.Sequential(*conv2_0)
 
 
-        self.conv_l_down0 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=2, expanse_ratio=1)
-        self.conv_l_down1 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=2, expanse_ratio=1)
+        self.conv_l_down0 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=2, expanse_ratio=4)
+        self.conv_l_down1 = MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=2, expanse_ratio=4)
         self.conv_l_up1 =  BasicDeconv2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=2, padding=1,
                                     norm_layer=nn.BatchNorm2d,
                                     act_layer=partial(nn.ReLU6, inplace=True))
         self.conv_l_up0 = BasicDeconv2d(self.attention_channels[0], self.attention_channels[0], kernel_size=4, stride=2, padding=1,
                                     norm_layer=nn.BatchNorm2d,
                                     act_layer=partial(nn.ReLU6, inplace=True))
+        # conv_l = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
+        #             for i in range(2)]
         # self.conv_l = nn.Sequential(*conv_l)
 
         conv_h = [MobileV2Residual(self.attention_channels[0], self.attention_channels[0], stride=1, expanse_ratio=4)
-                 for i in range(2)]
+                 for i in range(4)]
         self.conv_h = nn.Sequential(*conv_h)
 
 
@@ -143,52 +168,50 @@ class Aggregation(nn.Module):
 
     def forward(self, features_left, features_right, left_img, right_img):
 
-        corr0 = self.process_corr(features_left[0], features_right[0],left_img, right_img, 0) #N, search_num*group_wise_split_num, H, W
-        corr1 = self.process_corr(features_left[1], features_right[1],left_img, right_img, 1) #N, search_num*group_wise_split_num, H, W
-        corr2 = self.process_corr(features_left[2], features_right[2],left_img, right_img, 2) #N, search_num*group_wise_split_num, H, W
+        # start_time = time.time()
+        corr0 = self.process_corr(features_left[0], features_right[0], left_img, right_img, 0)  # N, search_num*group_wise_split_num, H, W
+        # torch.cuda.synchronize()
+        # print(f"Time for process_corr: {time.time() - start_time:.4f}s")
 
-        vol0 = self.conv0_init(corr0) #N, attention_channels[0], H, W
-        vol0 = self.conv0(vol0) #N, attention_channels[0], H, W
-        vol1 = self.conv1_init(corr1) #N, attention_channels[1], H, W
-        vol1 = self.conv1(vol1) #N, attention_channels[1], H, W
-        vol2 = self.conv2_init(corr2) #N, attention_channels[2], H, W
-        vol2 = self.conv2(vol2) #N, attention_channels[2], H, W
+        # start_time = time.time()
+        vol0 = self.conv0_init(corr0)  # N, attention_channels[0], H, W
+        vol1 = self.conv1(vol0)  # N, attention_channels[0], H, W
+        vol2 = self.conv2(vol1)  # N, attention_channels[0], H, W
+        # torch.cuda.synchronize()
+        # print(f"Time for volume processing: {time.time() - start_time:.4f}s")
 
-        feat = self.attention_feat(features_left[0]) #N, attention_channels[0], H, W
+        # start_time = time.time()
+        feat = self.attention_feat(features_left[0])  # N, attention_channels[0], H, W
+        # torch.cuda.synchronize()
+        # print(f"Time for attention feature processing: {time.time() - start_time:.4f}s")
 
+        # start_time = time.time()
         feat_l = F.sigmoid(feat)
-        feat_h = 1-feat_l
+        feat_h = 1 - feat_l
+        # torch.cuda.synchronize()
+        # print(f"Time for feature splitting: {time.time() - start_time:.4f}s")
 
-        # feat_l = self.feat_l_init(feat_l) #N, attention_channels[0], H, W
-        # feat_l = self.feat_l(feat_l) #N, attention_channels[0], H, W
-        # feat_l = F.sigmoid(feat_l) #N, attention_channels[0], H, W
+        # start_time = time.time()
+        vol_att12 = self.fpn_layer2(vol2, vol1)  # N, attention_channels[1], H, W
+        vol_att12 = self.conv1_1(vol_att12) + self.redir1(vol1)  # N, attention_channels[1], H, W
+        vol_att0 = self.conv1_0(vol0)  # N, attention_channels[0], H, W
+        vol_att012 = self.fpn_layer1(vol_att12, vol_att0)  # N, attention_channels[0], H, W
+        vol_att012 = self.conv2_0(vol_att012) + self.redir0(vol0)  # N, attention_channels[0], H, W
+        # torch.cuda.synchronize()
+        # print(f"Time for FPN and redirection layers: {time.time() - start_time:.4f}s")
 
-        # feat_h = self.feat_h_init(feat_h) #N, attention_channels[0], H, W
-        # feat_h = self.feat_h(feat_h) #N, attention_channels[0], H, W
-        # feat_h = F.sigmoid(feat_h) #N, attention_channels[0], H, W
-
-        vol_att12 = self.fpn_layer2(vol2, vol1) #N, attention_channels[1], H, W
-        vol_att12 = F.relu(self.conv1_1(vol_att12) + self.redir1(vol1)) #N, attention_channels[1], H, W
-
-        vol_att0 = self.conv1_0(vol0) #N, attention_channels[0], H, W
-
-        vol_att012 = self.fpn_layer1(vol_att12, vol_att0) #N, attention_channels[0], H, W
-        # vol_att012 = F.relu(self.conv2_0(vol_att012) + self.redir0(vol_att0), inplace=True) #N, attention_channels[0], H, W
-        vol_att012 = F.relu(self.conv2_0(vol_att012) + self.redir0(vol0)) #N, attention_channels[0], H, W
-
-        vol_l = vol_att012 * feat_l #N, attention_channels[0], H, W
+        # start_time = time.time()
+        vol_l = vol_att012 * feat_l  # N, attention_channels[0], H, W
         vol_h = vol_att012 * feat_h
-
-        vol_l_1_down = self.conv_l_down0(vol_l) #N, attention_channels[0], H/2, W/2
-        vol_l_2_down = self.conv_l_down1(vol_l_1_down) #N, attention_channels[0], H/4, W/4
-        vol_l_1_up = self.conv_l_up1(vol_l_2_down) + vol_l_1_down #N, attention_channels[0], H/2, W/2
-        vol_l = self.conv_l_up0(vol_l_1_up) + vol_l #N, attention_channels[0], H, W
-
-        vol_h = self.conv_h(vol_h) #N, attention_channels[0], H, W
-
-        vol_all = F.relu(vol_l*feat_l + vol_h*feat_h, inplace=True) #N, attention_channels[0], H, W
-
-        return vol_all
+        vol_l_1_down = self.conv_l_down0(vol_l)  # N, attention_channels[0], H/2, W/2
+        vol_l_2_down = self.conv_l_down1(vol_l_1_down)  # N, attention_channels[0], H/4, W/4
+        vol_l_1_up = self.conv_l_up1(vol_l_2_down) + vol_l_1_down  # N, attention_channels[0], H/2, W/2
+        vol_l = self.conv_l_up0(vol_l_1_up) + vol_l  # N, attention_channels[0], H, W
+        vol_h = self.conv_h(vol_h)  # N, attention_channels[0], H, W
+        vol_all = F.relu(vol_l * feat_l + vol_h * feat_h, inplace=True)  # N, attention_channels[0], H, W
+        # torch.cuda.synchronize()
+        # print(f"Time for final volume computation: {time.time() - start_time:.4f}s")
+        return vol_all, feat_l, feat_h
     
 class MobileV2Residual(nn.Module):
     def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):

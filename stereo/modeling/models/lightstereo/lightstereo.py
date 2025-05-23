@@ -8,6 +8,7 @@ from stereo.modeling.disp_refinement.disp_refinement import context_upsample
 
 from .backbone import Backbone, FPNLayer
 from .aggregation import Aggregation
+import time
 
 
 class LightStereo(nn.Module):
@@ -43,31 +44,54 @@ class LightStereo(nn.Module):
         self.refine_3 = BasicDeconv2d(16, 9, kernel_size=4, stride=2, padding=1)
 
     def forward(self, data):
+        # time_start = time.time()
         image1 = data['left']
         image2 = data['right']
+        # torch.cuda.synchronize()
+        # print('time_start:', time_start - time.time())
 
+        # time1 = time.time()
         features_left = self.backbone(image1)
         features_right = self.backbone(image2)
+        # torch.cuda.synchronize()
+        # print("time_backbone:", time.time() - time1)
 
+        # time2 = time.time()
         gwc_volume = correlation_volume(features_left[0], features_right[0], self.max_disp // 4)
+        # torch.cuda.synchronize()
+        # print("time_correlation_volume:", time.time() - time2)
+
+        # time3 = time.time()
         encoding_volume = self.cost_agg(gwc_volume, features_left)  # [bz, 1, max_disp/4, H/4, W/4]
         squeezed_encoding = encoding_volume[0].reshape(encoding_volume[0].size(0), -1, encoding_volume[0].size(2), encoding_volume[0].size(3))  # [bz, max_disp/4, H/4, W/4]
+        # torch.cuda.synchronize()
+        # print("time_cost_agg:", time.time() - time3)
 
+        # time4 = time.time()
         prob = F.softmax(squeezed_encoding, dim=1)
         init_disp = disparity_regression(prob, self.max_disp // 4)  # [bz, 1, H/4, W/4]
+        # torch.cuda.synchronize()
+        # print("time_disp_regression:", time.time() - time4)
 
+        # time5 = time.time()
         xspx = self.refine_1(features_left[0])
         xspx = self.refine_2(xspx, self.stem_2(image1))
         xspx = self.refine_3(xspx)
         spx_pred = F.softmax(xspx, 1)  # [bz, 9, H, W]
         disp_pred = context_upsample(init_disp * 4., spx_pred.float()).unsqueeze(1)  # # [bz, 1, H, W]
+        # torch.cuda.synchronize()
+        # print("time_refine:", time.time() - time5)
 
+        # time6 = time.time()
         result = {'disp_pred': disp_pred}
 
         if self.training:
             disp_4 = F.interpolate(init_disp, image1.shape[2:], mode='bilinear', align_corners=False)
             disp_4 *= 4
             result['disp_4'] = disp_4
+        # torch.cuda.synchronize()
+        # print("time_result:", time.time() - time6)
+        # print("total_time:", time.time() - time_start)
 
         return result
 

@@ -2,20 +2,20 @@ DATA_CONFIG:
     DATA_INFOS:
         -   DATASET: KittiDataset
             DATA_SPLIT: {
-                TRAINING: ./data/KITTI12/kitti12_train194.txt,
-                EVALUATING: '',
+                TRAINING: ./data/KITTI12/kitti12_train180.txt,
+                EVALUATING: './data/KITTI12/kitti12_val14.txt',
                 TESTING: ''
             }
-            DATA_PATH: /yourpath/KITTI12
+            DATA_PATH: ./data/KITTI12/kitti12
             RETURN_RIGHT_DISP: true
 
         -   DATASET: KittiDataset
             DATA_SPLIT: {
-                TRAINING: ./data/KITTI5/kitti15_train200.txt,
+                TRAINING: ./data/KITTI5/kitti15_train180.txt,
                 EVALUATING: ./data/KITTI15/kitti15_val20.txt,
                 TESTING: ./data/KITTI15/kitti15_test.txt
             }
-            DATA_PATH: /yourpath/KITTI5
+            DATA_PATH: ./data/KITTI15/kitti15
             RETURN_RIGHT_DISP: true
 
     DATA_TRANSFORM:
@@ -46,7 +46,7 @@ MODEL:
 OPTIMIZATION:
     FREEZE_BN: false
     SYNC_BN: true
-    AMP: false
+    AMP: true
     BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 500
 
@@ -79,7 +79,7 @@ EVALUATOR:
 TRAINER:
     EVAL_INTERVAL: 100
     CKPT_SAVE_INTERVAL: 1
-    MAX_CKPT_SAVE_NUM: 100
+    MAX_CKPT_SAVE_NUM: 5
     LOGGER_ITER_INTERVAL: 10
     TRAIN_VISUALIZATION: True
     EVAL_VISUALIZATION: True
