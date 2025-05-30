@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
 from stereo.modeling.common.basic_block_2d import BasicConv2d, BasicDeconv2d
+import math
+import torch
 
 
 
@@ -14,7 +16,7 @@ class Aggregation(nn.Module):
         self.left_att = left_att
         self.expanse_ratio = expanse_ratio
 
-        conv0 = [MobileV2Residual(in_channels*2, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
+        conv0 = [MobileV2Residual(in_channels, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
                  for i in range(blocks[0])]
         self.conv0 = nn.Sequential(*conv0)
 
@@ -121,6 +123,7 @@ class MobileV2Residual(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU6(inplace=True)
         )
+        self.sfa = custom_att(hidden_dim, ks=7, groups=16, gamma=1.4, b=1.4)
         self.pwliner = nn.Sequential(
             nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
             nn.BatchNorm2d(oup)
@@ -130,6 +133,7 @@ class MobileV2Residual(nn.Module):
         # v2
         feat = self.pwconv(x)
         feat = self.dwconv(feat)
+        feat = self.sfa(feat)
         feat = self.pwliner(feat)
 
         if self.use_res_connect:
@@ -137,6 +141,59 @@ class MobileV2Residual(nn.Module):
         else:
             return feat
 
+class custom_att(nn.Module):
+    def __init__(self, channel,  ks=7, groups=16, gamma=1.4, b=1.4):
+        super(custom_att, self).__init__()
+        # from torch.nn.parameter import Parameter
+
+        self.groups = groups
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+
+        kernel_size = int(abs((math.log(channel, 2) + b) / gamma)) + 2
+        kernel_size = kernel_size if kernel_size % 2 else kernel_size + 1
+        # 计算padding
+        padding = kernel_size // 2
+        self.avg = nn.AdaptiveAvgPool2d(1)
+        self.conv1 = nn.Conv1d(1, 1, kernel_size=kernel_size, padding=padding, bias=False)
+
+        p = ks // 2
+        c = channel // (groups * 2)
+        self.conv2 = nn.Conv1d(c, c, kernel_size=ks, padding=p, groups=c, bias=False)
+        # self.gn = nn.GroupNorm(channel1 // (2 * groups), channel // (2 * groups))
+        self.sig = nn.Sigmoid()
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+
+        x = x.reshape(b * self.groups, -1, h, w)
+        x_0, x_1 = x.chunk(2, dim=1)
+
+        # channel attention
+        b1, c1, h, w = x_0.shape
+
+        y = (self.avg_pool(x_0)*1.15 + self.max_pool(x_0) * 0.25).view([b1, 1, c1])
+        y = self.conv1(y)
+        y = self.sig(y).view([b1, c1, 1, 1])
+        xn = x_0 * y
+
+        # spatial attention
+
+        b2, c2, h, w = x_1.shape
+
+        x_h = torch.mean(x_1, dim=3, keepdim=True).view(b2, c2, h)
+        x_w = torch.mean(x_1, dim=2, keepdim=True).view(b2, c2, w)
+
+        x_h = self.sig(self.conv2(x_h)).view(b2, c2, h, 1)
+        x_w = self.sig(self.conv2(x_w)).view(b2, c2, 1, w)
+
+        xs = x_1 * x_h * x_w
+
+        # concatenate along channel axis
+        out = torch.cat([xn, xs], dim=1)
+        out = out.reshape(b, -1, h, w)
+
+        return out
 
 class AttentionModule(nn.Module):
     def __init__(self, dim, img_feat_dim):
