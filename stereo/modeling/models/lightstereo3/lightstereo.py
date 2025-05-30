@@ -115,7 +115,7 @@ class LightStereo3(nn.Module):
         result = {'disp_pred': disp_pred}
         result['filter'] = filter
         # result['freq_filter_high'] = F.sigmoid(freq_filter_left)
-        result['freq_filter_low'] = 1 - result['freq_filter_high']
+        # result['freq_filter_low'] = 1 - result['freq_filter_high']
 
         if self.training:
             disp_4 = F.interpolate(init_disp, image1.shape[2:], mode='bilinear', align_corners=False)
