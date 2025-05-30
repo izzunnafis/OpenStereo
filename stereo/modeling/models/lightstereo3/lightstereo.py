@@ -22,6 +22,13 @@ class LightStereo3(nn.Module):
         # backbobe
         self.backbone = Backbone(cfgs.get('BACKCBONE', 'MobileNetv2'))
 
+        self.img_texture = nn.Sequential(
+            BasicConv2d(3, 16, kernel_size=3, stride=2, padding=1,
+                        norm_layer=nn.BatchNorm2d, act_layer=nn.LeakyReLU),
+            BasicConv2d(16, 48, kernel_size=3, stride=2, padding=1,
+                        norm_layer=nn.BatchNorm2d, act_layer=nn.LeakyReLU)
+        )
+
         # aggregation
         self.cost_agg = Aggregation(in_channels=48,
                                     left_att=self.left_att,
@@ -78,15 +85,20 @@ class LightStereo3(nn.Module):
         
         # filter = local_variance_filter(image1, 5)
         # freq_filter_left = self.freq_filter(filter)
+        texture_feat_l = self.img_texture(image1)
+        texture_feat_r = self.img_texture(image2)
 
-        feat_texture_left = edge_detection(features_left[0], kernel_type='sobel')  # [bz, C, H, W]
-        feat_texture_right = edge_detection(features_right[0], kernel_type='sobel')  # [bz, C, H, W]
+        feat_texture_left = local_variance_filter(texture_feat_l, 5)  # [bz, C, H, W]
+        feat_texture_right = local_variance_filter(texture_feat_r, 5)  # [bz, C, H, W]
+        # feat_texture_left = edge_detection(texture_feat_l, kernel_type='sobel')  # [bz, C, H, W]
+        # feat_texture_right = edge_detection(texture_feat_r, kernel_type='sobel')  # [bz, C, H, W]
 
         corr_texture_vol = correlation_volume(feat_texture_left, feat_texture_right, self.max_disp // 4)  # [bz, C, max_disp/4, H/4, W/4]
 
         # time2 = time.time()
         corr_volum = correlation_volume(features_left[0], features_right[0], self.max_disp // 4)
         gwc_volume = torch.cat([corr_volum, corr_texture_vol], dim=1)
+        # gwc_volume = corr_volum  # [bz, C, max_disp/4, H/4, W/4]
         # torch.cuda.synchronize()
         # print("time_correlation_volume:", time.time() - time2)
 

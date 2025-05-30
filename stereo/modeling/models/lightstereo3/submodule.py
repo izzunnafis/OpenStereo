@@ -15,7 +15,7 @@ def local_variance_filter(image, window_size):
         torch.Tensor: Image filtered by local variance.
     """
 
-    kernel = torch.ones((3, 1, window_size, window_size), device=image.device) / (window_size ** 2)
+    kernel = torch.ones((48, 1, window_size, window_size), device=image.device) / (window_size ** 2)
     local_mean = F.conv2d(image, kernel, padding=window_size // 2, groups=image.shape[1])
     local_squared_mean = F.conv2d(image ** 2, kernel, padding=window_size // 2, groups=image.shape[1])
     local_variance = local_squared_mean - local_mean ** 2
@@ -67,7 +67,7 @@ def edge_detection(image, kernel_type='sobel'):
     edge_magnitude = torch.sqrt(edge_x ** 2 + edge_y ** 2)
     # Optionally normalize to [0, 1]
     edge_magnitude = (edge_magnitude - edge_magnitude.amin(dim=(2,3), keepdim=True)) / \
-                        (edge_magnitude.amax(dim=(2,3), keepdim=True) - edge_magnitude.amin(dim=(2,3), keepdim=True) + 1e-8)
+                        (edge_magnitude.amax(dim=(2,3), keepdim=True) - edge_magnitude.amin(dim=(2,3), keepdim=True) + 1)
     return edge_magnitude
 
 # Example usage
