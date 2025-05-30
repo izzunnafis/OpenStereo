@@ -8,12 +8,12 @@ from stereo.modeling.disp_refinement.disp_refinement import context_upsample
 
 from .backbone import Backbone, FPNLayer
 from .aggregation import Aggregation
-from .submodule import local_variance_filter
+from .submodule import local_variance_filter, edge_detection
 from .aggregation import MobileV2Residual
 import time
 
 
-class LightStereo2(nn.Module):
+class LightStereo3(nn.Module):
     def __init__(self, cfgs):
         super().__init__()
         self.max_disp = cfgs.MAX_DISP
@@ -76,16 +76,22 @@ class LightStereo2(nn.Module):
         # torch.cuda.synchronize()
         # print("time_backbone:", time.time() - time1)
         
-        filter = local_variance_filter(image1, 5)
-        freq_filter_left = self.freq_filter(filter)
+        # filter = local_variance_filter(image1, 5)
+        # freq_filter_left = self.freq_filter(filter)
+
+        feat_texture_left = edge_detection(features_left[0], kernel_type='sobel')  # [bz, C, H, W]
+        feat_texture_right = edge_detection(features_right[0], kernel_type='sobel')  # [bz, C, H, W]
+
+        corr_texture_vol = correlation_volume(feat_texture_left, feat_texture_right, self.max_disp // 4)  # [bz, C, max_disp/4, H/4, W/4]
 
         # time2 = time.time()
-        gwc_volume = correlation_volume(features_left[0], features_right[0], self.max_disp // 4)
+        corr_volum = correlation_volume(features_left[0], features_right[0], self.max_disp // 4)
+        gwc_volume = torch.cat([corr_volum, corr_texture_vol], dim=1)
         # torch.cuda.synchronize()
         # print("time_correlation_volume:", time.time() - time2)
 
         # time3 = time.time()
-        encoding_volume = self.cost_agg(gwc_volume, features_left, freq_filter_left)  # [bz, 1, max_disp/4, H/4, W/4]
+        encoding_volume = self.cost_agg(gwc_volume, features_left)  # [bz, 1, max_disp/4, H/4, W/4]
         squeezed_encoding = encoding_volume[0].reshape(encoding_volume[0].size(0), -1, encoding_volume[0].size(2), encoding_volume[0].size(3))  # [bz, max_disp/4, H/4, W/4]
         # torch.cuda.synchronize()
         # print("time_cost_agg:", time.time() - time3)
@@ -108,7 +114,7 @@ class LightStereo2(nn.Module):
         # time6 = time.time()
         result = {'disp_pred': disp_pred}
         result['filter'] = filter
-        result['freq_filter_high'] = F.sigmoid(freq_filter_left)
+        # result['freq_filter_high'] = F.sigmoid(freq_filter_left)
         result['freq_filter_low'] = 1 - result['freq_filter_high']
 
         if self.training:

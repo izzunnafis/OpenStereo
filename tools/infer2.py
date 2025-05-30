@@ -16,6 +16,8 @@ import time
 from thop import profile
 import matplotlib.pyplot as plt
 
+import cv2
+
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--dist_mode', action='store_true', default=False, help='torchrun ddp multi gpu')
@@ -27,16 +29,17 @@ def parse_config():
     parser.add_argument('--savename', type=str, default=None)
 
     args = parser.parse_args()
-    args.cfg_file = "cfgs/efficientstereo/lse2_simple_rev3.yaml"
+    args.cfg_file = "cfgs/efficientstereo/lse2_rev_test.yaml"
     # args.cfg_file = "cfgs/efficientstereo/lightstereo_m_kitti.yaml"
     # folder = "/home/rispro-sils/ADAS_Kedaireka/Dataset/Manually_gathered_17_07_24/data_img"
-    folder = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/data/KITTI15/kitti15/testing"
+    folder = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/data/manual2"
     # args.left_img_path = os.path.join(folder, "20241210-182042-852_frame.png")
     # args.right_img_path = os.path.join(folder, "20241210-182042-924_frame2.png")
-    args.left_img_path = os.path.join(folder, "image_2/000010_11.png")
-    args.right_img_path = os.path.join(folder, "image_3/000010_11.png")
+    args.left_img_path = os.path.join(folder, "output_images_4/left_image_20250521_111950_10_0156.png")
+    args.right_img_path = os.path.join(folder, "output_images_4/right_image_20250521_111950_10_0156.png")
+    args.disp_img_path = os.path.join(folder, "output_images_4/disparity_image_20250521_111950_10_0156.npy")
     parent = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/LightStereo2"
-    you = "lse2_simple_rev3"
+    you = "lse2_rev"
     child = "default/ckpt/checkpoint_epoch_499.pth"
     args.pretrained_model = os.path.join(parent, you, child)
     args.savename = "output.png"
@@ -94,6 +97,7 @@ def main():
     transform = build_transform_by_cfg(transform_config)
     left_img = np.array(Image.open(args.left_img_path).convert('RGB'), dtype=np.float32)
     right_img = np.array(Image.open(args.right_img_path).convert('RGB'), dtype=np.float32)
+    disp_img = np.load(args.disp_img_path)
     sample = {
         'left': left_img,
         'right': right_img,
@@ -142,6 +146,11 @@ def main():
         logger.info(f"MACs: {macs / 1e9:.3f} G")
         logger.info(f"Parameters: {params / 1e6:.3f} M")
 
+    disp_img_color = color_map_tensorboard(disp_img, max_disp=192)
+    disp_img_color = disp_img_color.astype('uint8')
+    disp_img_color = Image.fromarray(disp_img_color).resize((672, 384), Image.BILINEAR)
+    disp_img_color = np.array(disp_img_color, dtype=np.uint8)
+
     disp_pred = model_pred['disp_pred'].squeeze().cpu().numpy()
     img_color = color_map_tensorboard(disp_pred, max_disp=192)
     img_color = img_color.astype('uint8')
@@ -151,63 +160,41 @@ def main():
     filter = filter.astype('uint8')
     filter = np.transpose(filter, (1, 2, 0))
 
-    l_img = np.array(Image.open(args.left_img_path).convert('RGB').resize((1248, 384), Image.BILINEAR), dtype=np.uint8)
+    l_img = np.array(Image.open(args.left_img_path).convert('RGB').resize((672, 384), Image.BILINEAR), dtype=np.uint8)
     l_img = l_img.astype('uint8')
+
+    coord_x = 100
+    coord_y = 250    
+
+    # Get depth and disparity at the specified coordinate
+    disp_value = disp_img[coord_y, coord_x]
+    depth_value = 0.12*335.95/disp_value if disp_value > 0 else 0  # Example depth calculation, adjust as needed
+
+    disp_pred = disp_pred[coord_y, coord_x]
+    depth_pred = 0.12*335.95/disp_pred if disp_pred > 0 else 0  # Example depth calculation, adjust as needed
+    
+    # Show the values on the image
+    text1 = f"ZED Depth: {depth_value:.2f}m  ZED Disp: {disp_value:.0f}px"
+    text2 = f"Pred Depth: {depth_pred:.2f}m  Pred Disp: {disp_pred:.0f}px"
+    cv2.circle(l_img, (coord_x, coord_y), 5, (0, 0, 255), -1)
+    cv2.circle(disp_img_color, (coord_x, coord_y), 5, (0, 0, 255), -1)
+    cv2.putText(disp_img_color, text1, (coord_x + 10, coord_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+    cv2.circle(img_color, (coord_x, coord_y), 5, (0, 0, 255), -1)
+    cv2.putText(img_color, text2, (coord_x + 10, coord_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)   
 
     print("filter shape:", filter.shape)
     print("l_img shape:", l_img.shape)
     print("img_color shape:", img_color.shape)
-    img_all = np.concatenate((l_img, img_color, filter), axis=0)
+    print("disp_img_color shape:", disp_img_color.shape)
+    img_all = np.concatenate((l_img, img_color, disp_img_color), axis=0)
 
     l_img = Image.fromarray(l_img)
     img_color = Image.fromarray(img_color)
     filter = Image.fromarray(filter)
     img_all = Image.fromarray(img_all)
-    filter.save("filter.png")
-    img_all.save("output_concat.png")
+    # filter.save("filter.png")
+    img_all.save("output_concat3_2.png")
 
-
-
-    # Interpolate feat_l to match the original image size
-    import torch.nn.functional as F
-    feat_l = model_pred['freq_filter_low']
-    original_size = (left_img.shape[0], left_img.shape[1])  # (height, width)
-    feat_l = F.interpolate(feat_l, size=original_size, mode='nearest')
-    feat_l = feat_l.squeeze().cpu().numpy()  # Remove batch and channel dimensions
-
-    feat_avg = np.mean(feat_l, axis=0)
-    feat_avg = (feat_avg - feat_avg.min()) / (feat_avg.max() - feat_avg.min()) * 255
-    feat_avg = feat_avg.astype('uint8')
-    feat_avg = Image.fromarray(feat_avg)
-    feat_avg.save("feat_l_avg.png")
-    logger.info("Average feature map saved as feat_l_avg.png")
-    
-    for i in range(feat_l.shape[0]):
-        feat = feat_l[i]
-        feat = (feat - feat.min()) / (feat.max() - feat.min()) * 255
-        feat = feat.astype('uint8')
-        feat = Image.fromarray(feat)
-        feat.save(f"feat_l_{i}.png")
-        logger.info(f"Feature map {i} saved as feat_l_{i}.png")
-
-    feat_h = model_pred['freq_filter_high']
-    original_size = (left_img.shape[0], left_img.shape[1])
-    feat_h = F.interpolate(feat_h, size=original_size, mode='nearest')
-    feat_h = feat_h.squeeze().cpu().numpy()
-    feat_avg = np.mean(feat_h, axis=0)
-    feat_avg = (feat_avg - feat_avg.min()) / (feat_avg.max() - feat_avg.min()) * 255
-    feat_avg = feat_avg.astype('uint8')
-    feat_avg = Image.fromarray(feat_avg)
-    feat_avg.save("feat_h_avg.png")
-    logger.info("Average feature map saved as feat_h_avg.png")
-
-    for i in range(feat_h.shape[0]):
-        feat = feat_h[i]
-        feat = (feat - feat.min()) / (feat.max() - feat.min()) * 255
-        feat = feat.astype('uint8')
-        feat = Image.fromarray(feat)
-        feat.save(f"feat_h_{i}.png")
-        logger.info(f"Feature map {i} saved as feat_h_{i}.png")
 
 
 

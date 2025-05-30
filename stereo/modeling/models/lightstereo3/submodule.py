@@ -29,6 +29,47 @@ def local_variance_filter(image, window_size):
 
     return local_variance
 
+def edge_detection(image, kernel_type='sobel'):
+    """
+    Apply edge detection to an image using PyTorch.
+
+    Parameters:
+        image (torch.Tensor): Input image tensor of shape (B, C, H, W).
+        kernel_type (str): Type of edge detection kernel ('sobel' or 'prewitt').
+
+    Returns:
+        torch.Tensor: Edge-detected image tensor of shape (B, C, H, W).
+    """
+    if kernel_type == 'sobel':
+        kernel_x = torch.tensor([[[-1, 0, 1],
+                                    [-2, 0, 2],
+                                    [-1, 0, 1]]], dtype=image.dtype, device=image.device)
+        kernel_y = torch.tensor([[[-1, -2, -1],
+                                    [ 0,  0,  0],
+                                    [ 1,  2,  1]]], dtype=image.dtype, device=image.device)
+    elif kernel_type == 'prewitt':
+        kernel_x = torch.tensor([[[-1, 0, 1],
+                                    [-1, 0, 1],
+                                    [-1, 0, 1]]], dtype=image.dtype, device=image.device)
+        kernel_y = torch.tensor([[[-1, -1, -1],
+                                    [ 0,  0,  0],
+                                    [ 1,  1,  1]]], dtype=image.dtype, device=image.device)
+    else:
+        raise ValueError("Unsupported kernel_type. Use 'sobel' or 'prewitt'.")
+
+    # Expand kernels to match input channels
+    channels = image.shape[1]
+    kernel_x = kernel_x.expand(channels, 1, 3, 3)
+    kernel_y = kernel_y.expand(channels, 1, 3, 3)
+
+    edge_x = F.conv2d(image, kernel_x, padding=1, groups=channels)
+    edge_y = F.conv2d(image, kernel_y, padding=1, groups=channels)
+    edge_magnitude = torch.sqrt(edge_x ** 2 + edge_y ** 2)
+    # Optionally normalize to [0, 1]
+    edge_magnitude = (edge_magnitude - edge_magnitude.amin(dim=(2,3), keepdim=True)) / \
+                        (edge_magnitude.amax(dim=(2,3), keepdim=True) - edge_magnitude.amin(dim=(2,3), keepdim=True) + 1e-8)
+    return edge_magnitude
+
 # Example usage
 if __name__ == "__main__":
     # Create a random grayscale image

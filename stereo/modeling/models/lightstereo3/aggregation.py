@@ -14,7 +14,7 @@ class Aggregation(nn.Module):
         self.left_att = left_att
         self.expanse_ratio = expanse_ratio
 
-        conv0 = [MobileV2Residual(in_channels, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
+        conv0 = [MobileV2Residual(in_channels*2, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
                  for i in range(blocks[0])]
         self.conv0 = nn.Sequential(*conv0)
 
@@ -92,6 +92,9 @@ class Aggregation(nn.Module):
 
             conv7_res = F.relu(conv7_h + conv7_l, inplace=True)
             # conv7_res = F.relu(conv7_h*feat_h + conv7_l*feat_l, inplace=True)
+        
+        else:
+            conv7_res = conv6
 
         return [conv7_res]
 
