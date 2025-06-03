@@ -6,7 +6,7 @@ from functools import partial
 from stereo.modeling.common.basic_block_2d import BasicConv2d, BasicDeconv2d
 import math
 import torch
-
+from .submodule import CoordAtt, Swish
 
 
 class Aggregation(nn.Module):
@@ -123,7 +123,49 @@ class MobileV2Residual(nn.Module):
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU6(inplace=True)
         )
-        self.sfa = custom_att(hidden_dim, ks=7, groups=16, gamma=1.4, b=1.4)
+        # self.sfa = c_att(hidden_dim, stride=stride, ks=7, groups=4, gamma=1.4, b=1.4)
+        self.pwliner = nn.Sequential(
+            nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(oup)
+        )
+
+    def forward(self, x):
+        # v2
+        feat = self.pwconv(x)
+        feat = self.dwconv(feat) 
+        # feat = self.sfa(feat)
+        feat = self.pwliner(feat)
+
+        if self.use_res_connect:
+            return x + feat
+        else:
+            return feat
+
+class MobileV2ResidualCA(nn.Module):
+    def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
+        super(MobileV2ResidualCA, self).__init__()
+        self.stride = stride
+        assert stride in [1, 2]
+
+        hidden_dim = int(inp * expanse_ratio)
+        self.use_res_connect = self.stride == 1 and inp == oup
+        pad = dilation
+
+        self.ca = CoordAtt(hidden_dim, hidden_dim)
+
+        # v2
+        self.pwconv = nn.Sequential(
+            # pw
+            nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU6(inplace=True)
+        )
+        self.dwconv = nn.Sequential(
+            nn.Conv2d(hidden_dim, hidden_dim, 3, stride, pad, dilation=dilation, groups=hidden_dim, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU6(inplace=True)
+        )
+        # self.sfa = c_att(hidden_dim, stride=stride, ks=7, groups=4, gamma=1.4, b=1.4)
         self.pwliner = nn.Sequential(
             nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
             nn.BatchNorm2d(oup)
@@ -133,7 +175,8 @@ class MobileV2Residual(nn.Module):
         # v2
         feat = self.pwconv(x)
         feat = self.dwconv(feat)
-        feat = self.sfa(feat)
+        feat = self.ca(feat)
+        # feat = self.sfa(feat)
         feat = self.pwliner(feat)
 
         if self.use_res_connect:
@@ -141,59 +184,47 @@ class MobileV2Residual(nn.Module):
         else:
             return feat
 
-class custom_att(nn.Module):
-    def __init__(self, channel,  ks=7, groups=16, gamma=1.4, b=1.4):
-        super(custom_att, self).__init__()
-        # from torch.nn.parameter import Parameter
+class MobileNextResidual(nn.Module):
+    def __init__(self,inp, oup, stride, expanse_ratio, dilation=1):
+        super().__init__()
 
-        self.groups = groups
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        # Expansion phase
+        self.inp = inp
+        self.hidden_dim = int(inp // expanse_ratio)
+        self.oup = oup
+        self.res_connect = self.inp == self.oup and stride == 1
+        k = 3
+        s = stride
 
-        kernel_size = int(abs((math.log(channel, 2) + b) / gamma)) + 2
-        kernel_size = kernel_size if kernel_size % 2 else kernel_size + 1
-        # 计算padding
-        padding = kernel_size // 2
-        self.avg = nn.AdaptiveAvgPool2d(1)
-        self.conv1 = nn.Conv1d(1, 1, kernel_size=kernel_size, padding=padding, bias=False)
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channels=self.inp, out_channels=self.inp, kernel_size=k, bias=False, groups=self.inp, padding=1),
+            nn.BatchNorm2d(num_features=self.inp),
+            Swish(),
+            #first linear layer
+            nn.Conv2d(in_channels=self.inp, out_channels=self.hidden_dim, kernel_size=1, bias=False, groups=1),
+            nn.BatchNorm2d(num_features=self.hidden_dim),
+            # sec linear layer
+            nn.Conv2d(in_channels=self.hidden_dim, out_channels=self.oup, kernel_size=1, bias=False, groups=1),
+            nn.BatchNorm2d(num_features=self.oup),
+            Swish(),
+            # expand layer
+            nn.Conv2d(in_channels=self.oup, out_channels=self.oup, kernel_size=k, bias=False, groups = self.oup, stride=s, padding=1),
+            nn.BatchNorm2d(num_features=self.oup),
+            )
 
-        p = ks // 2
-        c = channel // (groups * 2)
-        self.conv2 = nn.Conv1d(c, c, kernel_size=ks, padding=p, groups=c, bias=False)
-        # self.gn = nn.GroupNorm(channel1 // (2 * groups), channel // (2 * groups))
-        self.sig = nn.Sigmoid()
 
-    def forward(self, x):
-        b, c, h, w = x.shape
+    def forward(self, inputs):
+        """
+        :param inputs: input tensor
+        :param drop_connect_rate: drop connect rate (float, between 0 and 1)
+        :return: output of block
+        """
+        x = self.features(inputs)
 
-        x = x.reshape(b * self.groups, -1, h, w)
-        x_0, x_1 = x.chunk(2, dim=1)
-
-        # channel attention
-        b1, c1, h, w = x_0.shape
-
-        y = (self.avg_pool(x_0)*1.15 + self.max_pool(x_0) * 0.25).view([b1, 1, c1])
-        y = self.conv1(y)
-        y = self.sig(y).view([b1, c1, 1, 1])
-        xn = x_0 * y
-
-        # spatial attention
-
-        b2, c2, h, w = x_1.shape
-
-        x_h = torch.mean(x_1, dim=3, keepdim=True).view(b2, c2, h)
-        x_w = torch.mean(x_1, dim=2, keepdim=True).view(b2, c2, w)
-
-        x_h = self.sig(self.conv2(x_h)).view(b2, c2, h, 1)
-        x_w = self.sig(self.conv2(x_w)).view(b2, c2, 1, w)
-
-        xs = x_1 * x_h * x_w
-
-        # concatenate along channel axis
-        out = torch.cat([xn, xs], dim=1)
-        out = out.reshape(b, -1, h, w)
-
-        return out
+        # Skip connection and drop connect
+        if self.res_connect:
+            x = x + inputs
+        return x
 
 class AttentionModule(nn.Module):
     def __init__(self, dim, img_feat_dim):

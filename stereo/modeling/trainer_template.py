@@ -275,6 +275,7 @@ class TrainerTemplate:
                 data[k] = v.to(local_rank) if torch.is_tensor(v) else v
 
             with torch.cuda.amp.autocast(enabled=self.cfgs.OPTIMIZATION.AMP):
+                torch.cuda.synchronize()
                 infer_start = time.time()
                 model_pred = self.model(data)
                 torch.cuda.synchronize()
