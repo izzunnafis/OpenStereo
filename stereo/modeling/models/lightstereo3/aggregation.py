@@ -101,6 +101,70 @@ class Aggregation(nn.Module):
         return [conv7_res]
 
 
+class Aggregation2(nn.Module):
+    def __init__(self, in_channels, left_att, blocks, expanse_ratio, backbone_channels):
+        super(Aggregation2, self).__init__()
+
+        self.left_att = left_att
+        self.expanse_ratio = expanse_ratio
+
+        conv0 = [MobileV2Residual(in_channels, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
+                 for i in range(4)]
+        self.conv0 = nn.Sequential(*conv0)
+
+        self.conv1_l = MobileV2Residual(in_channels, in_channels, stride=2, expanse_ratio=self.expanse_ratio)
+
+        self.conv2_l = MobileV2Residual(in_channels, in_channels, stride=2, expanse_ratio=self.expanse_ratio)
+        conv3 = [MobileV2Residual(in_channels, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
+                     for i in range(4)]
+        self.conv3_l = nn.Sequential(*conv3)
+
+        self.conv4_l = nn.Sequential(
+            nn.ConvTranspose2d(in_channels, in_channels, 3, padding=1, output_padding=1, stride=2, bias=False),
+            nn.BatchNorm2d(in_channels))
+
+        self.conv5_l = nn.Sequential(
+            nn.ConvTranspose2d(in_channels, in_channels, 3, padding=1, output_padding=1, stride=2, bias=False),
+            nn.BatchNorm2d(in_channels))
+        
+        conv1_h = [MobileV2Residual(in_channels, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
+                 for i in range(4)]
+        self.conv_h = nn.Sequential(*conv1_h)
+
+
+        if self.left_att:
+            self.att0 = AttentionModule(in_channels, backbone_channels[0])
+
+
+
+        
+
+    def forward(self, x, features_left, freq_filter=None):
+        feat_h = F.sigmoid(freq_filter)
+        feat_l = 1 - feat_h
+
+        if self.left_att:
+            x = self.att0(x, features_left[0])
+
+        x = self.conv0(x)
+
+        conv_h = x * feat_h
+        conv_l = x * feat_l
+
+        conv1_l = self.conv1_l(conv_l)
+        conv2_l = self.conv2_l(conv1_l)
+
+        conv3_l = self.conv3_l(conv2_l)
+        conv4_l = self.conv4_l(conv3_l) + conv1_l
+        conv5_l = self.conv5_l(conv4_l)
+
+        conv_h = self.conv_h(conv_h)
+
+        conv_6 = F.relu(conv_h*feat_h + conv5_l*feat_l, inplace=True)
+
+        return [conv_6]
+
+
 class MobileV2Residual(nn.Module):
     def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
         super(MobileV2Residual, self).__init__()

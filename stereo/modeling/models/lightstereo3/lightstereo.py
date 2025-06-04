@@ -7,7 +7,7 @@ from stereo.modeling.disp_pred.disp_regression import disparity_regression
 from stereo.modeling.disp_refinement.disp_refinement import context_upsample
 
 from .backbone import Backbone, FPNLayer
-from .aggregation import Aggregation
+from .aggregation import Aggregation, Aggregation2
 from .submodule import local_variance_filter, edge_detection, LearnableVarianceFilter, LearnableCorrelationVolume
 from .aggregation import MobileV2Residual
 import time
@@ -33,7 +33,7 @@ class LightStereo3(nn.Module):
         )
 
         # aggregation
-        self.cost_agg = Aggregation(in_channels=48,
+        self.cost_agg = Aggregation2(in_channels=48,
                                     left_att=self.left_att,
                                     blocks=cfgs.AGGREGATION_BLOCKS,
                                     expanse_ratio=cfgs.EXPANSE_RATIO,
@@ -144,16 +144,16 @@ class LightStereo3(nn.Module):
         if torch.isnan(disp_pred).any() or torch.isinf(disp_pred).any():
             print('disp_pred has nan or inf')
             disp_pred = torch.nan_to_num(disp_pred, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
-        # loss = 1.0 * F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
-        loss = self.loss_func(disp_pred[mask], disp_gt[mask])
+        loss = 1.0 * F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
+        # loss = self.loss_func(disp_pred[mask], disp_gt[mask])
 
         disp_4 = model_pred['disp_4']
         disp_4 = torch.clamp(disp_4, min=1e-6, max=self.max_disp)
         if torch.isnan(disp_4).any() or torch.isinf(disp_4).any():
             print('disp_4 has nan or inf')
             disp_4 = torch.nan_to_num(disp_4, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
-        # loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
-        loss += 0.3 * self.loss_func(disp_4[mask], disp_gt[mask])
+        loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
+        # loss += 0.3 * self.loss_func(disp_4[mask], disp_gt[mask])
 
 
         if torch.isnan(loss).any() or torch.isinf(loss).any():
