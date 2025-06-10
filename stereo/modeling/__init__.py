@@ -16,6 +16,7 @@ from .models.stereobase.trainer import Trainer as StereoBaseGRUTrainer
 from .models.lightstereo_eff1.trainer import Trainer as LightStereoEff1Trainer
 from .models.lightstereo2.trainer import Trainer as LightStereo2Trainer
 from .models.lightstereo3.trainer import Trainer as LightStereo3Trainer
+from .models.lightstereo4.trainer import Trainer as LightStereo4Trainer
 # from .models.lightstereo_eff1copy.trainer import Trainer as LightStereoEffTestTrainer
 
 # from .models.iinet.trainer import Trainer as IINetTrainer
@@ -43,7 +44,8 @@ __all__ = {
     'NMRF': NMRFTrainer,
     'LightStereoEff1' : LightStereoEff1Trainer,
     'LightStereo2' : LightStereo2Trainer,
-    'LightStereo3' : LightStereo3Trainer
+    'LightStereo3' : LightStereo3Trainer,
+    'LightStereo4' : LightStereo4Trainer,
     # 'LightStereoEffTest' : LightStereoEffTestTrainer,
 }
 

@@ -29,6 +29,12 @@ class Aggregation(nn.Module):
         conv4_add = [MobileV2Residual(in_channels * 4, in_channels * 4, stride=1, expanse_ratio=self.expanse_ratio)
                      for i in range(blocks[2] - 1)]
         self.conv4 = nn.Sequential(*conv4_add)
+        
+        self.conv1_3d = nn.Sequential(*
+            [MobileV2Residual3D(in_channels*4, in_channels * 4, stride=1, expanse_ratio=self.expanse_ratio//2)
+             for i in range(2)]
+        )
+        self.conv2_3d = MobileV2Residual3D(in_channels * 4, 16, stride=1, expanse_ratio=self.expanse_ratio//2)
 
         self.conv5 = nn.Sequential(
             nn.ConvTranspose2d(in_channels * 4, in_channels * 2, 3, padding=1, output_padding=1, stride=2, bias=False),
@@ -62,7 +68,7 @@ class Aggregation(nn.Module):
 
         
 
-    def forward(self, x, features_left, freq_filter=None):
+    def forward(self, x, features_left, freq_filter=None, concat_vol=None):
         x = self.conv0(x)
         if self.left_att:
             x = self.att0(x, features_left[0])
@@ -76,6 +82,13 @@ class Aggregation(nn.Module):
         conv4 = self.conv4(conv3)
         if self.left_att:
             conv4 = self.att4(conv4, features_left[2])
+            
+        if concat_vol is not None:
+            conv1_3d = self.conv1_3d(concat_vol)
+            conv2_3d = self.conv2_3d(conv1_3d)
+            B, C, H, W = conv4.shape
+            conv2_3d = conv2_3d.view(B, C, H, W)
+            conv4 = conv2_3d + conv4
 
         conv5 = F.relu(self.conv5(conv4) + self.redir2(conv2), inplace=True)
         conv6 = F.relu(self.conv6(conv5) + self.redir1(x), inplace=True)
@@ -204,6 +217,47 @@ class MobileV2Residual(nn.Module):
             return x + feat
         else:
             return feat
+
+class MobileV2Residual3D(nn.Module):
+    def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
+        super(MobileV2Residual3D, self).__init__()
+        self.stride = stride
+        assert stride in [1, 2]
+
+        hidden_dim = int(inp * expanse_ratio)
+        self.use_res_connect = self.stride == 1 and inp == oup
+        pad = dilation
+
+        # v2
+        self.pwconv = nn.Sequential(
+            # pw
+            nn.Conv3d(inp, hidden_dim, 1, 1, 0, bias=False),
+            nn.BatchNorm3d(hidden_dim),
+            nn.ReLU6(inplace=True)
+        )
+        self.dwconv = nn.Sequential(
+            nn.Conv3d(hidden_dim, hidden_dim, 3, stride, pad, dilation=dilation, groups=hidden_dim, bias=False),
+            nn.BatchNorm3d(hidden_dim),
+            nn.ReLU6(inplace=True)
+        )
+        # self.sfa = c_att(hidden_dim, stride=stride, ks=7, groups=4, gamma=1.4, b=1.4)
+        self.pwliner = nn.Sequential(
+            nn.Conv3d(hidden_dim, oup, 1, 1, 0, bias=False),
+            nn.BatchNorm3d(oup)
+        )
+
+    def forward(self, x):
+        # v2
+        feat = self.pwconv(x)
+        feat = self.dwconv(feat) 
+        # feat = self.sfa(feat)
+        feat = self.pwliner(feat)
+
+        if self.use_res_connect:
+            return x + feat
+        else:
+            return feat
+
 
 class MobileV2ResidualCA(nn.Module):
     def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
