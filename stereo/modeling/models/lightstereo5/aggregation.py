@@ -13,84 +13,48 @@ class Aggregation(nn.Module):
     def __init__(self, in_channels, left_att, blocks, expanse_ratio, backbone_channels):
         super(Aggregation, self).__init__()
 
+        self.left_att = True
         self.expanse_ratio = expanse_ratio
         
-        self.blocks = [2, 2, 2]
-
-
-        self.conv1 = MobileV2Residual(in_channels, in_channels * 2, stride=2, expanse_ratio=self.expanse_ratio)
-
-        self.conv2 = MobileV2Residual(in_channels * 2, in_channels * 2, stride=2, expanse_ratio=self.expanse_ratio)
+        self.blocks = [1, 1, 1]
+    
+        conv0 = [DisparityBoostResidual(in_channels)
+                 for i in range(self.blocks[0])]
+        self.conv0 = nn.Sequential(*conv0)
         
-        self.conv1_3d = nn.Sequential(*[
-            MobileV2Residual3D(8, 8, stride=1, expanse_ratio=4)
-            for i in range(self.blocks[0])
-        ])
+        conv1 = [DisparityBoostResidual(in_channels)
+                 for i in range(self.blocks[1])]
+        self.conv1 = nn.Sequential(*conv1)
         
-        self.conv3_comb_rep = nn.Sequential(*[
-            MobileV2Residual(in_channels * 4, in_channels * 4, stride=1, expanse_ratio=self.expanse_ratio)
-            for i in range(self.blocks[1])
-        ])
+        conv2 = [DisparityBoostResidual(in_channels)
+                    for i in range(self.blocks[2])]
+        self.conv2 = nn.Sequential(*conv2)
 
-        self.conv4 = nn.Sequential(
-            nn.ConvTranspose2d(in_channels * 4, in_channels * 2, 4, padding=1, stride=2, bias=False),
-            nn.BatchNorm2d(in_channels * 2))
-
-        self.conv5 = nn.Sequential(
-            nn.ConvTranspose2d(in_channels * 2, in_channels, 4, padding=1, stride=2, bias=False),
-            nn.BatchNorm2d(in_channels))
-
-        self.redir1 = MobileV2Residual(in_channels, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
-
-        self.conv_l = nn.Sequential(*[
-            MobileV2Residual(4*in_channels, 4*in_channels, stride=1, expanse_ratio=self.expanse_ratio)
-            for i in range(self.blocks[2])
-        ])
-
-        self.conv_l_up1 = nn.Sequential(
-            nn.ConvTranspose2d(in_channels * 4, in_channels * 2, 4, padding=1, stride=2, bias=False),
-            nn.BatchNorm2d(in_channels * 2))
-
-        self.conv_l_up0 = nn.Sequential(
-            nn.ConvTranspose2d(in_channels * 2, in_channels, 4, padding=1, stride=2, bias=False),
-            nn.BatchNorm2d(in_channels))
+        conv0 = [MobileV2Residual(in_channels)
+                 for i in range(self.blocks[0])]
+        self.conv0 = nn.Sequential(*conv0)
         
-        conv_h = [MobileV2Residual(in_channels, in_channels, stride=1, expanse_ratio=self.expanse_ratio)
-                 for i in range(self.blocks[2])]
-        self.conv_h = nn.Sequential(*conv_h)
+        conv1 = [MobileV2Residual(in_channels)
+                 for i in range(self.blocks[1])]
+        self.conv1 = nn.Sequential(*conv1)
+        
+        conv2 = [MobileV2Residual(in_channels)
+                    for i in range(self.blocks[2])]
+        self.conv2 = nn.Sequential(*conv2)
+        
+        self.att1 = AttentionModule(in_channels, backbone_channels[0])
+        self.att2 = AttentionModule(in_channels, backbone_channels[0])
+                
 
-
-    def forward(self, x, features_left, freq_filter=None, concat_vol=None):
-        conv1 = self.conv1(x)
+    def forward(self, x, features_left=None, freq_filter=None, concat_vol=None):
+        
+        conv0 = self.conv0(x)
+        conv0 = self.att1(conv0, features_left[0])
+        conv1 = self.conv1(conv0)
+        conv1 = self.att2(conv1, features_left[0])
         conv2 = self.conv2(conv1)
-            
-        if concat_vol is not None:
-            B, C, H, W = conv2.shape
-            conv2_3d = self.conv1_3d(concat_vol)
-            conv2_3d = conv2_3d.view(B, C, H, W)
-            conv3 = self.conv3_comb_rep(torch.cat([conv2, conv2_3d], dim=1))
-
-        conv_redir1 = self.redir1(x)
-
-        conv4 = F.relu(self.conv4(conv3), inplace=True)
-        conv5 = F.relu(self.conv5(conv4) + conv_redir1, inplace=True)
-
-        if freq_filter is not None:
-            feat_h = F.sigmoid(freq_filter)
-            feat_l = 1 - feat_h
-
-            conv6_h = self.conv_h(conv5)
-            conv6_l = self.conv_l(conv3)
-
-            conv6_l_1_up = self.conv_l_up1(conv6_l)
-            conv7_l = self.conv_l_up0(conv6_l_1_up) + conv_redir1
-
-            conv7_res = F.relu(conv6_h*feat_h + conv7_l*feat_l, inplace=True)
         
-        else:
-            conv7_res = conv5
-
-        return [conv7_res]
+        return [conv2]
 
 
 class MobileV2Residual(nn.Module):
@@ -112,6 +76,8 @@ class MobileV2Residual(nn.Module):
         )
         self.dwconv = nn.Sequential(
             nn.Conv2d(hidden_dim, hidden_dim, 3, stride, pad, dilation=dilation, groups=hidden_dim, bias=False),
+            # nn.Conv2d(hidden_dim, hidden_dim, (3, 1), 1, padding=(1,0), bias=False),
+            # nn.Conv2d(hidden_dim, hidden_dim, (1, 3), 1, padding=(0,1), bias=False),
             nn.BatchNorm2d(hidden_dim),
             nn.ReLU6(inplace=True)
         )
@@ -133,6 +99,97 @@ class MobileV2Residual(nn.Module):
         else:
             return feat
 
+class DisparityBoostResidual(nn.Module):
+    def __init__(self, inp, dilation=1):
+        super(DisparityBoostResidual, self).__init__()
+        self.pwconv = nn.Sequential(
+            # pw
+            nn.Conv2d(inp, inp, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(inp),
+            nn.ReLU6(inplace=True)
+
+        )
+        self.pwconv1 = nn.Sequential(
+            nn.Conv2d(inp, inp//2, 1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(inp//2),
+            nn.ReLU6(inplace=True)
+        )
+        self.pwconv2 = nn.Sequential(
+            nn.Conv2d(inp, inp//4, 1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(inp//4),
+            nn.ReLU6(inplace=True)
+        )
+        self.disp_conv = nn.Sequential(
+            nn.Conv3d(1, 1, 3, stride=1, padding=1, bias=False))
+        self.disp_conv1 = nn.Sequential(
+            nn.Conv3d(1, 1, 3, stride=1, padding=1, bias=False))
+        self.disp_conv2 = nn.Sequential(
+            nn.Conv3d(1, 1, 3, stride=1, padding=1, bias=False))
+        
+        self.pwliner = nn.Sequential(
+            nn.Conv2d(inp, inp, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(inp)
+        )
+        self.pwliner1 = nn.Sequential(
+            nn.Conv2d(inp//2, inp, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(inp)
+        )
+        self.pwliner2 = nn.Sequential(
+            nn.Conv2d(inp//4, inp, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(inp)
+        )
+
+    def forward(self, inputs):
+        feat = self.pwconv(inputs)
+        feat1 = self.pwconv1(inputs)
+        feat2 = self.pwconv2(inputs)
+        feat = feat.unsqueeze(1)  # [B, C, H, W] -> [B, 1, C, H, W]
+        feat = self.disp_conv(feat)  # [B, 1, C, H, W] -> [B, 1, 1, H, W]
+        feat = feat.squeeze(1)  # [B, 1, C, H, W] -> [B, C, H, W]
+        feat1 = feat1.unsqueeze(1)  # [B, C, H, W] -> [B, 1, C, H, W]
+        feat1 = self.disp_conv1(feat1)  # [B, 1, C, H, W] -> [B, 1, 1, H, W]
+        feat1 = feat1.squeeze(1)  # [B, 1, C, H, W] -> [B, C, H, W]
+        feat2 = feat2.unsqueeze(1)  # [B, C, H, W] -> [B, 1, C, H, W]
+        feat2 = self.disp_conv2(feat2)  # [B, 1, C, H, W] -> [B, 1, 1, H, W]
+        feat2 = feat2.squeeze(1)  # [B, 1, C, H, W] -> [B, C, H, W]
+        feat = self.pwliner(feat)
+        feat1 = self.pwliner1(feat1)
+        feat2 = self.pwliner2(feat2)
+        feat = feat + feat1 + feat2
+        return feat
+
+
+class PointWiseResidual(nn.Module):
+    def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
+        super(PointWiseResidual, self).__init__()
+        self.stride = stride
+        assert stride in [1, 2]
+
+        hidden_dim = int(inp * expanse_ratio)
+        self.use_res_connect = self.stride == 1 and inp == oup
+
+        # v2
+        self.pwconv = nn.Sequential(
+            nn.Conv2d(inp, hidden_dim, 1, stride=stride, padding=0, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.ReLU6(inplace=True)
+        )
+        self.pwliner = nn.Sequential(
+            nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(oup)
+        )
+
+    def forward(self, x):
+        # v2
+        feat = self.pwconv(x)
+        feat = self.pwliner(feat)
+
+        if self.use_res_connect:
+            return x + feat
+        else:
+            return feat
+
+
 class MobileV2Residual3D(nn.Module):
     def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
         super(MobileV2Residual3D, self).__init__()
@@ -150,14 +207,12 @@ class MobileV2Residual3D(nn.Module):
             nn.BatchNorm3d(hidden_dim),
             nn.ReLU6(inplace=True)
         )
-        self.dwconv31 = nn.Conv3d(hidden_dim, hidden_dim, [3, 1, 1], stride, [1, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
-        self.dwconv32 = nn.Conv3d(hidden_dim, hidden_dim, [5, 1, 1], stride, [2, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
-        self.dwconv33 = nn.Conv3d(hidden_dim, hidden_dim, [7, 1, 1], stride, [3, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
-        self.dwconv34 = nn.Conv3d(hidden_dim, hidden_dim, [11, 1, 1], stride, [5, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
         self.dwconv = nn.Sequential(
+            nn.Conv3d(hidden_dim, hidden_dim, 3, stride, pad, dilation=dilation, groups=hidden_dim, bias=False),
             nn.BatchNorm3d(hidden_dim),
             nn.ReLU6(inplace=True)
         )
+        # self.sfa = c_att(hidden_dim, stride=stride, ks=7, groups=4, gamma=1.4, b=1.4)
         self.pwliner = nn.Sequential(
             nn.Conv3d(hidden_dim, oup, 1, 1, 0, bias=False),
             nn.BatchNorm3d(oup)
@@ -166,7 +221,6 @@ class MobileV2Residual3D(nn.Module):
     def forward(self, x):
         # v2
         feat = self.pwconv(x)
-        feat = self.dwconv32(feat)
         feat = self.dwconv(feat) 
         # feat = self.sfa(feat)
         feat = self.pwliner(feat)

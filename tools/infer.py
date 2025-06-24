@@ -27,7 +27,7 @@ def parse_config():
     parser.add_argument('--savename', type=str, default=None)
 
     args = parser.parse_args()
-    args.cfg_file = "cfgs/efficientstereo/lse2_simple_rev3.yaml"
+    args.cfg_file = "cfgs/efficientstereo/lse4.yaml"
     # args.cfg_file = "cfgs/efficientstereo/lightstereo_m_kitti.yaml"
     # folder = "/home/rispro-sils/ADAS_Kedaireka/Dataset/Manually_gathered_17_07_24/data_img"
     folder = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/data/KITTI15/kitti15/testing"
@@ -35,8 +35,8 @@ def parse_config():
     # args.right_img_path = os.path.join(folder, "20241210-182042-924_frame2.png")
     args.left_img_path = os.path.join(folder, "image_2/000010_11.png")
     args.right_img_path = os.path.join(folder, "image_3/000010_11.png")
-    parent = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/LightStereo2"
-    you = "lse2_simple_rev3"
+    parent = "/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/LightStereo4"
+    you = "lse4/v15_1"
     child = "default/ckpt/checkpoint_epoch_499.pth"
     args.pretrained_model = os.path.join(parent, you, child)
     args.savename = "output.png"

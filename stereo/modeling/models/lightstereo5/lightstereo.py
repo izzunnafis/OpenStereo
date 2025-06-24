@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from stereo.modeling.common.basic_block_2d import BasicConv2d, BasicDeconv2d
-from stereo.modeling.cost_volume.cost_volume import correlation_volume, build_concat_volume, build_gwc_volume
+from stereo.modeling.cost_volume.cost_volume import correlation_volume, build_concat_volume
 from stereo.modeling.disp_pred.disp_regression import disparity_regression
 from stereo.modeling.disp_refinement.disp_refinement import context_upsample
 
@@ -13,7 +13,7 @@ from .aggregation import MobileV2Residual
 import time
 
 
-class LightStereo4(nn.Module):
+class LightStereo5(nn.Module):
     def __init__(self, cfgs):
         super().__init__()
         self.max_disp = cfgs.MAX_DISP
@@ -62,10 +62,10 @@ class LightStereo4(nn.Module):
             # MobileV2Residual(48, 48, stride=1, expanse_ratio=4),
             # MobileV2Residual(48, 48, stride=1, expanse_ratio=4))
         self.freq_filter = nn.Sequential(
-            BasicConv2d(24, 48, kernel_size=3, stride=1, padding=1,
-                        norm_layer=nn.BatchNorm2d, act_layer=nn.ReLU))
+            MobileV2Residual(24, 48, stride=1, expanse_ratio=1),
+            MobileV2Residual(48, 48, stride=1, expanse_ratio=1))
         
-        self.loss_func = LogL1Loss_v3()
+        self.loss_func = LogL1Loss()
 
 
 
@@ -83,8 +83,8 @@ class LightStereo4(nn.Module):
         # torch.cuda.synchronize()
         # print("time_backbone:", time.time() - time1)
         
-        filter = self.variance_filter(features_left[0])
-        freq_filter_left = self.freq_filter(filter)
+        # filter = self.variance_filter(features_left[0])
+        # freq_filter_left = self.freq_filter(filter)
         # filter = local_variance_filter(features_left[0], 5)
         # freq_filter_left = self.freq_filter(filter)
         # feat_texture_left = edge_detection(texture_feat_l, kernel_type='sobel')  # [bz, C, H, W]
@@ -93,14 +93,13 @@ class LightStereo4(nn.Module):
  
         # time2 = time.time()
         gwc_volume = correlation_volume(features_left[0], features_right[0], self.max_disp // 4)
-        concat_vol = build_gwc_volume(features_left[-1], features_right[-1], self.max_disp // 16, num_groups=8)
+        # concat_vol = build_concat_volume(features_left[-1], features_right[-1], self.max_disp // 16)
         # gwc_volume = corr_volum  # [bz, C, max_disp/4, H/4, W/4]
         # torch.cuda.synchronize()
         # print("time_correlation_volume:", time.time() - time2)
 
         # time3 = time.time()
-        encoding_volume = self.cost_agg(gwc_volume, features_left, freq_filter=freq_filter_left, concat_vol=concat_vol)  # [bz, 1, max_disp/4, H/4, W/4]
-        # encoding_volume = self.cost_agg(gwc_volume, features_left, freq_filter=freq_filter_left)  # [bz, 1, max_disp/4, H/4, W/4]
+        encoding_volume = self.cost_agg(gwc_volume, features_left)  # [bz, 1, max_disp/4, H/4, W/4]
         squeezed_encoding = encoding_volume[0].reshape(encoding_volume[0].size(0), -1, encoding_volume[0].size(2), encoding_volume[0].size(3))  # [bz, max_disp/4, H/4, W/4]
         # torch.cuda.synchronize()
         # print("time_cost_agg:", time.time() - time3)
@@ -146,16 +145,16 @@ class LightStereo4(nn.Module):
         if torch.isnan(disp_pred).any() or torch.isinf(disp_pred).any():
             print('disp_pred has nan or inf')
             disp_pred = torch.nan_to_num(disp_pred, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
-        # loss = 1.0 * F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
-        loss = self.loss_func(disp_pred[mask], disp_gt[mask])
+        loss = 1.0 * F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
+        # loss = self.loss_func(disp_pred[mask], disp_gt[mask])
 
         disp_4 = model_pred['disp_4']
         disp_4 = torch.clamp(disp_4, min=1e-6, max=self.max_disp)
         if torch.isnan(disp_4).any() or torch.isinf(disp_4).any():
             print('disp_4 has nan or inf')
             disp_4 = torch.nan_to_num(disp_4, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
-        # loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
-        loss += 0.3 * self.loss_func(disp_4[mask], disp_gt[mask])
+        loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
+        # loss += 0.3 * self.loss_func(disp_4[mask], disp_gt[mask])
 
 
         if torch.isnan(loss).any() or torch.isinf(loss).any():
@@ -179,37 +178,6 @@ class LogL1Loss(nn.Module):
         f_t= torch.log(f_t + 0.5)
         loss = self.crit(f_s, f_t)
         return loss
-    
-class LogL1Loss_v2(nn.Module):
-    """
-    Loss to apply at student vs teacher predictions and/or student vs GT (replacing smoothL1)
-    """
-    def __init__(self):
-        super(LogL1Loss_v2, self).__init__()
-        self.crit = nn.L1Loss(reduction=None)
-
-    def forward(self, f_s, f_t):
-        loss = torch.log(torch.abs(f_s - f_t) + 1.0).mean()
-        return loss
-    
-class LogL1Loss_v3(nn.Module):
-    """
-    Loss to apply at student vs teacher predictions and/or student vs GT (replacing smoothL1)
-    """
-    def __init__(self, beta=2.71828, epsilon=1.0):
-        super(LogL1Loss_v3, self).__init__()
-        self.crit = nn.L1Loss(reduction=None)
-        self.beta = beta
-        self.epsilon = epsilon
-
-    def forward(self, f_s, f_t):
-        diff = torch.abs(f_s-f_t)
-        loss = torch.where(
-            diff < self.beta,
-            torch.log(diff + self.epsilon),
-            diff/self.beta
-        )
-        return loss.mean()
 
 class MobileV2ResidualMod(nn.Module):
     def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):

@@ -19,6 +19,7 @@ from .crestereo_dataset import CREStereoDataset
 from .argoverse_dataset import ArgoverseDataset
 from .spring import SpringDataset
 from .vkitti2_dataset import VirtualKitti2Dataset
+from .manual_dataset import ManualDataset
 __all__ = {
     'SceneFlowDataset': SceneFlowDataset,
     'KittiDataset': KittiDataset,
@@ -33,7 +34,8 @@ __all__ = {
     'CREStereoDataset': CREStereoDataset,
     'ArgoverseDataset': ArgoverseDataset,
     'SpringDataset': SpringDataset,
-    'VirtualKITTI2Dataset': VirtualKitti2Dataset
+    'VirtualKITTI2Dataset': VirtualKitti2Dataset,
+    'ManualDataset': ManualDataset,
 }
 
 
