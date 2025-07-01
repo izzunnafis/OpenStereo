@@ -15,6 +15,7 @@ sys.path.insert(0, './')
 from stereo.utils import common_utils
 from stereo.modeling import build_trainer
 from cfgs.data_basic import DATA_PATH_DICT
+from thop import profile
 
 
 def parse_config():
@@ -66,9 +67,7 @@ def main():
 
     # env
     torch.cuda.set_device(local_rank)
-    if args.fix_random_seed:
-        seed = 0 if not args.dist_mode else dist.get_rank()
-        common_utils.set_random_seed(seed=seed)
+    common_utils.set_random_seed(seed=42)
 
     # savedir
     args.output_dir = str(os.path.join(args.save_root_dir, args.exp_group_path, args.tag, args.extra_tag))
@@ -100,11 +99,23 @@ def main():
     tbar = tqdm.trange(model_trainer.last_epoch + 1, model_trainer.total_epochs,
                        desc='epochs', dynamic_ncols=True, disable=(local_rank != 0),
                        bar_format='{l_bar}{bar}{r_bar}\n')
+    
+    # Log FLOPs of the model
+    if global_rank == 0:
+        try:
+            dummy_input = next(iter(model_trainer.eval_loader))
+            for k, v in dummy_input.items():
+                dummy_input[k] = v.to(local_rank) if torch.is_tensor(v) else v
+            flops, params = profile(model_trainer.model, inputs=(dummy_input,), verbose=False)
+            logger.info(f"Model FLOPs: {flops / 1e9:.2f} GFLOPs, Params: {params / 1e6:.2f} M")
+        except Exception as e:
+            logger.warning(f"Could not compute FLOPs: {e}")
+            
     # train loop
     for current_epoch in tbar:
         model_trainer.train(current_epoch, tbar)
         model_trainer.save_ckpt(current_epoch)
-        if current_epoch % cfgs.TRAINER.EVAL_INTERVAL == 0 or current_epoch == model_trainer.total_epochs - 1:
+        if (current_epoch+1) % cfgs.TRAINER.EVAL_INTERVAL == 0 or current_epoch == model_trainer.total_epochs - 1:
             model_trainer.evaluate(current_epoch)
 
 

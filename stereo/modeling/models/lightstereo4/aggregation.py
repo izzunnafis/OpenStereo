@@ -13,17 +13,16 @@ class Aggregation(nn.Module):
     def __init__(self, in_channels, left_att, blocks, expanse_ratio, backbone_channels):
         super(Aggregation, self).__init__()
 
-        self.expanse_ratio = expanse_ratio
+        self.expanse_ratio = 4
         
-        self.blocks = [2, 2, 2]
-
+        self.blocks = [4, 4, 2]
 
         self.conv1 = MobileV2Residual(in_channels, in_channels * 2, stride=2, expanse_ratio=self.expanse_ratio)
-
         self.conv2 = MobileV2Residual(in_channels * 2, in_channels * 2, stride=2, expanse_ratio=self.expanse_ratio)
+        self.conv2_dup = MobileV2Residual(in_channels * 2, in_channels * 4, stride=2, expanse_ratio=self.expanse_ratio)
         
         self.conv1_3d = nn.Sequential(*[
-            MobileV2Residual3D(8, 8, stride=1, expanse_ratio=4)
+            MobileV2Residual3D(8, 8, stride=1, expanse_ratio=self.expanse_ratio)
             for i in range(self.blocks[0])
         ])
         
@@ -60,36 +59,33 @@ class Aggregation(nn.Module):
         self.conv_h = nn.Sequential(*conv_h)
 
 
-    def forward(self, x, features_left, freq_filter=None, concat_vol=None):
+    def forward(self, x, vol_3d=None):
         conv1 = self.conv1(x)
-        conv2 = self.conv2(conv1)
             
-        if concat_vol is not None:
+        if vol_3d is not None:
+            conv2 = self.conv2(conv1)
             B, C, H, W = conv2.shape
-            conv2_3d = self.conv1_3d(concat_vol)
+            conv2_3d = self.conv1_3d(vol_3d)
             conv2_3d = conv2_3d.view(B, C, H, W)
             conv3 = self.conv3_comb_rep(torch.cat([conv2, conv2_3d], dim=1))
+        else:
+            conv2 = self.conv2_dup(conv1)
+            conv3 = self.conv3_comb_rep(conv2)
 
         conv_redir1 = self.redir1(x)
+        # conv_redir2 = self.redir2(conv1)
 
         conv4 = F.relu(self.conv4(conv3), inplace=True)
         conv5 = F.relu(self.conv5(conv4) + conv_redir1, inplace=True)
 
-        if freq_filter is not None:
-            feat_h = F.sigmoid(freq_filter)
-            feat_l = 1 - feat_h
+        conv6_h = self.conv_h(conv5)
+        conv6_l = self.conv_l(conv3)
 
-            conv6_h = self.conv_h(conv5)
-            conv6_l = self.conv_l(conv3)
+        conv6_l_1_up = self.conv_l_up1(conv6_l)
+        conv7_l = self.conv_l_up0(conv6_l_1_up) + conv_redir1
 
-            conv6_l_1_up = self.conv_l_up1(conv6_l)
-            conv7_l = self.conv_l_up0(conv6_l_1_up) + conv_redir1
-
-            conv7_res = F.relu(conv6_h*feat_h + conv7_l*feat_l, inplace=True)
+        conv7_res = F.relu(conv6_h + conv7_l, inplace=True)
         
-        else:
-            conv7_res = conv5
-
         return [conv7_res]
 
 
@@ -150,6 +146,8 @@ class MobileV2Residual3D(nn.Module):
             nn.BatchNorm3d(hidden_dim),
             nn.ReLU6(inplace=True)
         )
+        self.dwconv331 = nn.Conv3d(hidden_dim, hidden_dim, 3, stride, 1, dilation=dilation, groups=hidden_dim, bias=False)
+        self.dwconv332 = nn.Conv3d(hidden_dim, hidden_dim, 5, stride, 2, dilation=dilation, groups=hidden_dim, bias=False)
         self.dwconv31 = nn.Conv3d(hidden_dim, hidden_dim, [3, 1, 1], stride, [1, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
         self.dwconv32 = nn.Conv3d(hidden_dim, hidden_dim, [5, 1, 1], stride, [2, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
         self.dwconv33 = nn.Conv3d(hidden_dim, hidden_dim, [7, 1, 1], stride, [3, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
@@ -166,101 +164,14 @@ class MobileV2Residual3D(nn.Module):
     def forward(self, x):
         # v2
         feat = self.pwconv(x)
-        feat = self.dwconv32(feat)
+        feat = self.dwconv331(feat)
         feat = self.dwconv(feat) 
-        # feat = self.sfa(feat)
         feat = self.pwliner(feat)
 
         if self.use_res_connect:
             return x + feat
         else:
             return feat
-
-
-class MobileV2ResidualCA(nn.Module):
-    def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
-        super(MobileV2ResidualCA, self).__init__()
-        self.stride = stride
-        assert stride in [1, 2]
-
-        hidden_dim = int(inp * expanse_ratio)
-        self.use_res_connect = self.stride == 1 and inp == oup
-        pad = dilation
-
-        self.ca = CoordAtt(hidden_dim, hidden_dim)
-
-        # v2
-        self.pwconv = nn.Sequential(
-            # pw
-            nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
-            nn.BatchNorm2d(hidden_dim),
-            nn.ReLU6(inplace=True)
-        )
-        self.dwconv = nn.Sequential(
-            nn.Conv2d(hidden_dim, hidden_dim, 3, stride, pad, dilation=dilation, groups=hidden_dim, bias=False),
-            nn.BatchNorm2d(hidden_dim),
-            nn.ReLU6(inplace=True)
-        )
-        # self.sfa = c_att(hidden_dim, stride=stride, ks=7, groups=4, gamma=1.4, b=1.4)
-        self.pwliner = nn.Sequential(
-            nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
-            nn.BatchNorm2d(oup)
-        )
-
-    def forward(self, x):
-        # v2
-        feat = self.pwconv(x)
-        feat = self.dwconv(feat)
-        feat = self.ca(feat)
-        # feat = self.sfa(feat)
-        feat = self.pwliner(feat)
-
-        if self.use_res_connect:
-            return x + feat
-        else:
-            return feat
-
-class MobileNextResidual(nn.Module):
-    def __init__(self,inp, oup, stride, expanse_ratio, dilation=1):
-        super().__init__()
-
-        # Expansion phase
-        self.inp = inp
-        self.hidden_dim = int(inp // expanse_ratio)
-        self.oup = oup
-        self.res_connect = self.inp == self.oup and stride == 1
-        k = 3
-        s = stride
-
-        self.features = nn.Sequential(
-            nn.Conv2d(in_channels=self.inp, out_channels=self.inp, kernel_size=k, bias=False, groups=self.inp, padding=1),
-            nn.BatchNorm2d(num_features=self.inp),
-            Swish(),
-            #first linear layer
-            nn.Conv2d(in_channels=self.inp, out_channels=self.hidden_dim, kernel_size=1, bias=False, groups=1),
-            nn.BatchNorm2d(num_features=self.hidden_dim),
-            # sec linear layer
-            nn.Conv2d(in_channels=self.hidden_dim, out_channels=self.oup, kernel_size=1, bias=False, groups=1),
-            nn.BatchNorm2d(num_features=self.oup),
-            Swish(),
-            # expand layer
-            nn.Conv2d(in_channels=self.oup, out_channels=self.oup, kernel_size=k, bias=False, groups = self.oup, stride=s, padding=1),
-            nn.BatchNorm2d(num_features=self.oup),
-            )
-
-
-    def forward(self, inputs):
-        """
-        :param inputs: input tensor
-        :param drop_connect_rate: drop connect rate (float, between 0 and 1)
-        :return: output of block
-        """
-        x = self.features(inputs)
-
-        # Skip connection and drop connect
-        if self.res_connect:
-            x = x + inputs
-        return x
 
 class AttentionModule(nn.Module):
     def __init__(self, dim, img_feat_dim):
