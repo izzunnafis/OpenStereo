@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 
 import torch.nn.functional as F
-from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
+# from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 from einops import rearrange, repeat
 import time
 
@@ -166,16 +166,16 @@ class MambaVisionMixer(nn.Module):
         dt = rearrange(self.dt_proj(dt), "(b l) d -> b d l", l=seqlen)
         B = rearrange(B, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
         C = rearrange(C, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
-        y = selective_scan_fn(x, 
-                              dt, 
-                              A, 
-                              B, 
-                              C, 
-                              self.D.float(), 
-                              z=None, 
-                              delta_bias=self.dt_proj.bias.float(), 
-                              delta_softplus=True, 
-                              return_last_state=None)
+        # y = selective_scan_fn(x, 
+        #                       dt, 
+        #                       A, 
+        #                       B, 
+        #                       C, 
+        #                       self.D.float(), 
+        #                       z=None, 
+        #                       delta_bias=self.dt_proj.bias.float(), 
+        #                       delta_softplus=True, 
+        #                       return_last_state=None)
         
         y = torch.cat([y, z], dim=1)
         y = rearrange(y, "b d l -> b l d")

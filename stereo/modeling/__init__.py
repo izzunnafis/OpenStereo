@@ -23,7 +23,7 @@ from .models.lightstereo5.trainer import Trainer as LightStereo5Trainer
 # from .models.iinet.trainer import Trainer as IINetTrainer
 
 # %If you want to train/eval NMRF-Stereo, you need to build deformable attention and superpixel-guided disparity downsample operator: 'cd stereo/modeling/models/nmrf/ops && sh make.sh && cd ..'
-from .models.nmrf.trainer import Trainer as NMRFTrainer  
+# from .models.nmrf.trainer import Trainer as NMRFTrainer  
 
 
 __all__ = {
@@ -42,7 +42,7 @@ __all__ = {
     'LightStereo': LightStereoTrainer,
     'StereoBaseGRU': StereoBaseGRUTrainer,
     # 'IInet': IINetTrainer,
-    'NMRF': NMRFTrainer,
+    # 'NMRF': NMRFTrainer,
     'LightStereoEff1' : LightStereoEff1Trainer,
     'LightStereo2' : LightStereo2Trainer,
     'LightStereo3' : LightStereo3Trainer,

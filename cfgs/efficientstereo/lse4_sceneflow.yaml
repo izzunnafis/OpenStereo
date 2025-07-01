@@ -2,8 +2,8 @@ DATA_CONFIG:
     DATA_INFOS:
         -   DATASET: SceneFlowDataset
             DATA_SPLIT: {
-                TRAINING: ./data/SceneFlow/sceneflow_finalpass_train_driving.txt,
-                EVALUATING: ./data/SceneFlow/sceneflow_finalpass_test_driving.txt,
+                TRAINING: ./data/SceneFlow/sceneflow_finalpass_train.txt,
+                EVALUATING: ./data/SceneFlow/sceneflow_finalpass_test.txt,
                 TESTING: ''
             }
             DATA_PATH: /home/rispro-sils/ADAS_Kedaireka/Dataset/sceneflow
@@ -11,10 +11,7 @@ DATA_CONFIG:
 
     DATA_TRANSFORM:
         TRAINING:
-            - { NAME: StereoColorJitter, BRIGHTNESS: [ 0.7, 1.3 ], CONTRAST: [ 0.7, 1.3 ], SATURATION: [ 0.7, 1.3 ], HUE: 0.3, ASYMMETRIC_PROB: 0 }
-            - { NAME: RandomErase, PROB: 0.5, MAX_TIME: 2, BOUNDS: [ 50, 100 ] }
-            - { NAME: RandomSparseScale, SIZE: [ 320, 736 ], MIN_SCALE: 0.2, MAX_SCALE: 0.5, SCALE_PROB: 0.8 }
-            - { NAME: RandomCrop, SIZE: [ 320, 736 ] }
+            - { NAME: RandomCrop, SIZE: [ 320, 736 ], Y_JITTER: false }
             - { NAME: TransposeImage }
             - { NAME: ToTensor }
             - { NAME: NormalizeImage, MEAN: [ 0.485, 0.456, 0.406 ], STD: [ 0.229, 0.224, 0.225 ] }
@@ -38,12 +35,12 @@ OPTIMIZATION:
     FREEZE_BN: false
     SYNC_BN: true
     AMP: true
-    BATCH_SIZE_PER_GPU: 4
-    NUM_EPOCHS: 500
+    BATCH_SIZE_PER_GPU: 8
+    NUM_EPOCHS: 90
 
     OPTIMIZER:
         NAME: AdamW
-        LR: &lr 0.0012
+        LR: &lr 0.0008
         WEIGHT_DECAY: 1.0e-05
         EPS: 1.0e-08
 
@@ -68,9 +65,9 @@ EVALUATOR:
         - thres_3
 
 TRAINER:
-    EVAL_INTERVAL: 5
+    EVAL_INTERVAL: 2
     CKPT_SAVE_INTERVAL: 1
     MAX_CKPT_SAVE_NUM: 10
     LOGGER_ITER_INTERVAL: 10
-    TRAIN_VISUALIZATION: True
-    EVAL_VISUALIZATION: True
+    TRAIN_VISUALIZATION: False
+    EVAL_VISUALIZATION: False
