@@ -7,7 +7,7 @@ DATA_CONFIG:
                 TESTING: ''
             }
             DATA_PATH: /home/rispro-sils/ADAS_Kedaireka/Dataset/sceneflow
-            RETURN_RIGHT_DISP: true
+            RETURN_RIGHT_DISP: false
 
     DATA_TRANSFORM:
         TRAINING:
