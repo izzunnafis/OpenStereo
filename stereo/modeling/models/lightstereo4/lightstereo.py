@@ -62,7 +62,7 @@ class LightStereo4(nn.Module):
         corr_volume = correlation_volume(features_left[0], features_right[0], self.max_disp // 4)
         gwc_vol = build_gwc_volume(features_left[-1], features_right[-1], self.max_disp // 16, num_groups=8)
 
-        encoding_volume = self.cost_agg(corr_volume, features_left, 3d_vol=gwc_vol)  # [bz, 1, max_disp/4, H/4, W/4]
+        encoding_volume = self.cost_agg(corr_volume, vol_3d=gwc_vol)  # [bz, 1, max_disp/4, H/4, W/4]
         squeezed_encoding = encoding_volume[0].reshape(encoding_volume[0].size(0), -1, encoding_volume[0].size(2), encoding_volume[0].size(3))  # [bz, max_disp/4, H/4, W/4]
 
         prob = F.softmax(squeezed_encoding, dim=1)
