@@ -1,15 +1,17 @@
 import numpy as np
 from PIL import Image
 import argparse
+import sys
+sys.path.insert(0, './')
 from stereo.datasets.dataset_utils.readpfm import readpfm
 from stereo.utils.disp_color import disp_to_color
 
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--disp_path', type=str, default=None)
-    parser.add_argument('--savename', type=str, default=None)
-    parser.add_argument('--type', type=str, default='pfm', help='file type of disparity')
+    parser.add_argument('--disp_path', type=str, default="/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/LightStereo4/lse4/fine_tune_kitti/disp_0")
+    parser.add_argument('--savename', type=str, default="/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/LightStereo4/lse4/fine_tune_kitti/disp_color")
+    parser.add_argument('--type', type=str, default='png', help='file type of disparity')
     args = parser.parse_args()
 
     if args.type == 'png':

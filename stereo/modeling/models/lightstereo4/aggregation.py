@@ -19,7 +19,7 @@ class Aggregation(nn.Module):
 
         self.conv1 = MobileV2Residual(in_channels, in_channels * 2, stride=2, expanse_ratio=self.expanse_ratio)
         self.conv2 = MobileV2Residual(in_channels * 2, in_channels * 2, stride=2, expanse_ratio=self.expanse_ratio)
-        self.conv2_dup = MobileV2Residual(in_channels * 2, in_channels * 4, stride=2, expanse_ratio=self.expanse_ratio)
+        # self.conv2_dup = MobileV2Residual(in_channels * 2, in_channels * 4, stride=2, expanse_ratio=self.expanse_ratio)
         
         self.conv1_3d = nn.Sequential(*[
             MobileV2Residual3D(8, 8, stride=1, expanse_ratio=self.expanse_ratio)
@@ -147,11 +147,11 @@ class MobileV2Residual3D(nn.Module):
             nn.ReLU6(inplace=True)
         )
         self.dwconv331 = nn.Conv3d(hidden_dim, hidden_dim, 3, stride, 1, dilation=dilation, groups=hidden_dim, bias=False)
-        self.dwconv332 = nn.Conv3d(hidden_dim, hidden_dim, 5, stride, 2, dilation=dilation, groups=hidden_dim, bias=False)
-        self.dwconv31 = nn.Conv3d(hidden_dim, hidden_dim, [3, 1, 1], stride, [1, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
-        self.dwconv32 = nn.Conv3d(hidden_dim, hidden_dim, [5, 1, 1], stride, [2, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
-        self.dwconv33 = nn.Conv3d(hidden_dim, hidden_dim, [7, 1, 1], stride, [3, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
-        self.dwconv34 = nn.Conv3d(hidden_dim, hidden_dim, [11, 1, 1], stride, [5, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
+        # self.dwconv332 = nn.Conv3d(hidden_dim, hidden_dim, 5, stride, 2, dilation=dilation, groups=hidden_dim, bias=False)
+        # self.dwconv31 = nn.Conv3d(hidden_dim, hidden_dim, [3, 1, 1], stride, [1, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
+        # self.dwconv32 = nn.Conv3d(hidden_dim, hidden_dim, [5, 1, 1], stride, [2, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
+        # self.dwconv33 = nn.Conv3d(hidden_dim, hidden_dim, [7, 1, 1], stride, [3, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
+        # self.dwconv34 = nn.Conv3d(hidden_dim, hidden_dim, [11, 1, 1], stride, [5, 0, 0], dilation=dilation, groups=hidden_dim, bias=False)
         self.dwconv = nn.Sequential(
             nn.BatchNorm3d(hidden_dim),
             nn.ReLU6(inplace=True)

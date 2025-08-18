@@ -25,16 +25,17 @@ def parse_config():
     parser.add_argument('--workers', type=int, default=0, help='number of workers for dataloader')
     parser.add_argument('--pin_memory', action='store_true', default=False, help='data loader pin memory')
 
-    parser.add_argument('--pretrained_model', type=str, default=None, help='pretrained_model')
-    parser.add_argument('--data_cfg_file', type=str, default='cfgs/kitti_eval_test.yaml')
+    parser.add_argument('--pretrained_model', type=str, default="/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/fix_ckpt/checkpoint_epoch_499_efsnet_kitti_general.pth", help='pretrained_model')
+    parser.add_argument('--data_cfg_file', type=str, default='cfgs/kitti12_eval.yaml')
 
     args = parser.parse_args()
     args.output_dir = str(Path(args.pretrained_model).parent.parent)
     args.kitti_result_dir = os.path.join(args.output_dir, 'disp_0')
+    args.dist_mode = False
+    args.run_mode = 'eval'
     if not os.path.exists(args.kitti_result_dir):
         os.makedirs(args.kitti_result_dir)
-    yaml_files = glob.glob(os.path.join(args.output_dir, '*.yaml'), recursive=False)
-    args.cfg_file = yaml_files[0]
+    args.cfg_file = args.data_cfg_file
     yaml_config = common_utils.config_loader(args.cfg_file)
     cfgs = EasyDict(yaml_config)
 
@@ -99,7 +100,7 @@ def main():
             raise FileNotFoundError
         logger.info('Loading parameters from checkpoint %s' % args.pretrained_model)
         load_params_from_file(model, args.pretrained_model, device='cuda:%d' % local_rank,
-                              dist_mode=False, logger=logger, strict=False)
+                              dist_mode=False, logger=logger, strict=True)
 
     model.eval()
     for i, data in enumerate(kitti_test_loader):

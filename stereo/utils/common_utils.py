@@ -178,6 +178,15 @@ def load_params_from_file(model, filename, device, dist_mode, logger, strict=Tru
         logger.info(message)
     else:
         print(message)
+        
+    for key in pretrained_state_dict:
+        if key in state_dict and state_dict[key].shape == pretrained_state_dict[key].shape:
+            # print(f"Loaded {key}: {state_dict[key].shape} from checkpoint")
+            continue
+        elif key in state_dict:
+            print(f"Skipped {key}: {state_dict[key].shape} (shape mismatch with checkpoint: {pretrained_state_dict[key].shape})")
+        else:
+            print(f"Skipped {key}: {pretrained_state_dict[key].shape} (not matching shape)")        
 
 
 def color_map_tensorboard(disp_gt, pred, disp_max=192):

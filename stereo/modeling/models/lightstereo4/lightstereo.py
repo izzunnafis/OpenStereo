@@ -51,6 +51,7 @@ class LightStereo4(nn.Module):
         self.refine_2 = FPNLayer(24, 16)
 
         self.refine_3 = BasicDeconv2d(16, 9, kernel_size=4, stride=2, padding=1)
+        self.loss = LogL1Loss_v3()
 
     def forward(self, data):
         image1 = data['left']
@@ -95,14 +96,16 @@ class LightStereo4(nn.Module):
         if torch.isnan(disp_pred).any() or torch.isinf(disp_pred).any():
             print('disp_pred has nan or inf')
             disp_pred = torch.nan_to_num(disp_pred, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
-        loss = 1.0 * F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
+        # loss = 1.0 * F.smooth_l1_loss(disp_pred[mask], disp_gt[mask], reduction='mean')
+        loss = 1.0 * self.loss(disp_pred[mask], disp_gt[mask])
 
         disp_4 = model_pred['disp_4']
         disp_4 = torch.clamp(disp_4, min=1e-6, max=self.max_disp)
         if torch.isnan(disp_4).any() or torch.isinf(disp_4).any():
             print('disp_4 has nan or inf')
             disp_4 = torch.nan_to_num(disp_4, nan=1e-6, posinf=self.max_disp, neginf=1e-6)
-        loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
+        # loss += 0.3 * F.smooth_l1_loss(disp_4[mask], disp_gt[mask], reduction='mean')
+        loss += 0.3 * self.loss(disp_pred[mask], disp_gt[mask])  # Adding the loss for the initial prediction
 
 
         if torch.isnan(loss).any() or torch.isinf(loss).any():
@@ -138,7 +141,7 @@ class LogL1Loss_v2(nn.Module):
     def forward(self, f_s, f_t):
         loss = torch.log(torch.abs(f_s - f_t) + 1.0).mean()
         return loss
-    
+ 
 class LogL1Loss_v3(nn.Module):
     """
     Loss to apply at student vs teacher predictions and/or student vs GT (replacing smoothL1)
@@ -146,18 +149,18 @@ class LogL1Loss_v3(nn.Module):
     def __init__(self, beta=2.71828, epsilon=1.0):
         super(LogL1Loss_v3, self).__init__()
         self.crit = nn.L1Loss(reduction=None)
-        self.beta = beta
-        self.epsilon = epsilon
+        self.beta = torch.tensor(beta)
+        self.epsilon = torch.tensor(epsilon)
 
     def forward(self, f_s, f_t):
         diff = torch.abs(f_s-f_t)
         loss = torch.where(
             diff < self.beta,
             torch.log(diff + self.epsilon),
-            diff/self.beta
+            diff/(self.beta+self.epsilon) + torch.log(self.beta + self.epsilon) - self.beta/(self.beta+self.epsilon)
         )
         return loss.mean()
-
+    
 class MobileV2ResidualMod(nn.Module):
     def __init__(self, inp, oup, stride, expanse_ratio, dilation=1):
         super(MobileV2ResidualMod, self).__init__()

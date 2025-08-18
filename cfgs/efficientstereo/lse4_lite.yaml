@@ -2,7 +2,7 @@ DATA_CONFIG:
     DATA_INFOS:
         -   DATASET: KittiDataset
             DATA_SPLIT: {
-                TRAINING: ./data/KITTI12/kitti12_train180.txt,
+                TRAINING: './data/KITTI12/kitti12_train194.txt',
                 EVALUATING: './data/KITTI12/kitti12_val14.txt',
                 TESTING: ''
             }
@@ -11,9 +11,9 @@ DATA_CONFIG:
 
         -   DATASET: KittiDataset
             DATA_SPLIT: {
-                TRAINING: ./data/KITTI5/kitti15_train180.txt,
-                EVALUATING: ./data/KITTI15/kitti15_val20.txt,
-                TESTING: ./data/KITTI15/kitti15_test.txt
+                TRAINING: './data/KITTI15/kitti15_train200.txt',
+                EVALUATING: './data/KITTI15/kitti15_val20.txt',
+                TESTING: ''
             }
             DATA_PATH: ./data/KITTI15/kitti15
             RETURN_RIGHT_DISP: true
@@ -34,14 +34,16 @@ DATA_CONFIG:
             - { NAME: NormalizeImage, MEAN: [ 0.485, 0.456, 0.406 ], STD: [ 0.229, 0.224, 0.225 ] }
 
 MODEL:
-    NAME: LightStereo
+    NAME: LightStereo4
     MAX_DISP: 192
     EXPANSE_RATIO: 4
-    AGGREGATION_BLOCKS: [1, 2, 4]
+    AGGREGATION_BLOCKS: [ 1, 2, 4 ]
     LEFT_ATT: true
     FIND_UNUSED_PARAMETERS: false
     CKPT: -1
-    PRETRAINED_MODEL: '/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/fix_ckpt/LightStereo-S-SceneFlow.ckpt'
+    # PRETRAINED_MODEL: '/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/SceneFlowDataset/LightStereo4/lse4_sceneflow/fix_33_red/ckpt/checkpoint_epoch_89.pth' # The path of checkpoint trained with the Sceneflow dataset.
+    PRETRAINED_MODEL: '/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/fix_ckpt/checkpoint_epoch_89_efsnet_lite_sf_general.pth'
+    # PRETRAINED_MODEL: '/home/rispro-sils/ADAS_Kedaireka/Perception/OpenStereo/output/KittiDataset/LightStereo4/lse4/train_fix_difftest_lossv3_rev/ckpt/checkpoint_epoch_499.pth'
 
 OPTIMIZATION:
     FREEZE_BN: false
